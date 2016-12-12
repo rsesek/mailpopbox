@@ -10,7 +10,7 @@ import (
 type state int
 
 const (
-	stateNew state = iota // Before EHOL.
+	stateNew state = iota // Before EHLO.
 	stateInitial
 	stateMail
 	stateRecipient
@@ -18,6 +18,8 @@ const (
 )
 
 type connection struct {
+	server Server
+
 	tp         *textproto.Conn
 	remoteAddr net.Addr
 
@@ -31,6 +33,7 @@ type connection struct {
 
 func AcceptConnection(netConn net.Conn, server Server) error {
 	conn := connection{
+		server:     server,
 		tp:         textproto.NewConn(netConn),
 		remoteAddr: netConn.RemoteAddr(),
 		state:      stateNew,
@@ -49,7 +52,7 @@ func AcceptConnection(netConn net.Conn, server Server) error {
 
 		var cmd string
 		if _, err = fmt.Sscanf(conn.line, "%s", &cmd); err != nil {
-			conn.writeBadSyntax()
+			conn.reply(ReplyBadSyntax)
 			continue
 		}
 
@@ -74,7 +77,7 @@ func AcceptConnection(netConn net.Conn, server Server) error {
 		case "EXPN":
 			conn.writeReply(550, "access denied")
 		case "NOOP":
-			conn.writeOK()
+			conn.reply(ReplyOK)
 		case "HELP":
 			conn.writeReply(250, "https://tools.ietf.org/html/rfc5321")
 		default:
@@ -85,6 +88,10 @@ func AcceptConnection(netConn net.Conn, server Server) error {
 	return err
 }
 
+func (conn *connection) reply(reply ReplyLine) {
+	conn.writeReply(reply.Code, reply.Message)
+}
+
 func (conn *connection) writeReply(code int, msg string) {
 	if len(msg) > 0 {
 		conn.tp.PrintfLine("%d %s", code, msg)
@@ -93,25 +100,13 @@ func (conn *connection) writeReply(code int, msg string) {
 	}
 }
 
-func (conn *connection) writeOK() {
-	conn.writeReply(250, "OK")
-}
-
-func (conn *connection) writeBadSyntax() {
-	conn.writeReply(501, "syntax error")
-}
-
-func (conn *connection) writeBadSequence() {
-	conn.writeReply(503, "bad sequence of commands")
-}
-
 func (conn *connection) doEHLO() {
 	conn.resetBuffers()
 
 	var cmd string
 	_, err := fmt.Sscanf(conn.line, "%s %s", &cmd, &conn.ehlo)
 	if err != nil {
-		conn.writeBadSyntax()
+		conn.reply(ReplyBadSyntax)
 		return
 	}
 
@@ -122,54 +117,54 @@ func (conn *connection) doEHLO() {
 
 func (conn *connection) doMAIL() {
 	if conn.state != stateInitial {
-		conn.writeBadSequence()
+		conn.reply(ReplyBadSequence)
 		return
 	}
 
 	var mailFrom string
 	_, err := fmt.Sscanf(conn.line, "MAIL FROM:%s", &mailFrom)
 	if err != nil {
-		conn.writeBadSyntax()
+		conn.reply(ReplyBadSyntax)
 		return
 	}
 
 	conn.mailFrom, err = mail.ParseAddress(mailFrom)
 	if err != nil {
-		conn.writeBadSyntax()
+		conn.reply(ReplyBadSyntax)
 		return
 	}
 
 	conn.state = stateMail
-	conn.writeOK()
+	conn.reply(ReplyOK)
 }
 
 func (conn *connection) doRCPT() {
 	if conn.state != stateMail && conn.state != stateRecipient {
-		conn.writeBadSequence()
+		conn.reply(ReplyBadSequence)
 		return
 	}
 
 	var rcptTo string
 	_, err := fmt.Sscanf(conn.line, "RCPT TO:%s", &rcptTo)
 	if err != nil {
-		conn.writeBadSyntax()
+		conn.reply(ReplyBadSyntax)
 		return
 	}
 
 	address, err := mail.ParseAddress(rcptTo)
 	if err != nil {
-		conn.writeBadSyntax()
+		conn.reply(ReplyBadSyntax)
 	}
 
 	conn.rcptTo = append(conn.rcptTo, *address)
 
 	conn.state = stateRecipient
-	conn.writeOK()
+	conn.reply(ReplyOK)
 }
 
 func (conn *connection) doDATA() {
 	if conn.state != stateRecipient {
-		conn.writeBadSequence()
+		conn.reply(ReplyBadSequence)
 		return
 	}
 
@@ -182,10 +177,21 @@ func (conn *connection) doDATA() {
 		return
 	}
 
-	fmt.Println(string(data))
+	env := Envelope{
+		RemoteAddr: conn.remoteAddr,
+		EHLO:       conn.ehlo,
+		MailFrom:   *conn.mailFrom,
+		RcptTo:     conn.rcptTo,
+		Data:       data,
+	}
+
+	if reply := conn.server.OnMessageDelivered(env); reply != nil {
+		conn.reply(*reply)
+		return
+	}
 
 	conn.state = stateInitial
-	conn.writeOK()
+	conn.reply(ReplyOK)
 }
 
 func (conn *connection) doVRFY() {
@@ -194,7 +200,7 @@ func (conn *connection) doVRFY() {
 func (conn *connection) doRSET() {
 	conn.state = stateInitial
 	conn.resetBuffers()
-	conn.writeOK()
+	conn.reply(ReplyOK)
 }
 
 func (conn *connection) resetBuffers() {

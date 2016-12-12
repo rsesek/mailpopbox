@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net"
 
@@ -43,10 +44,15 @@ func (server *smtpServer) Name() string {
 	return server.config.Hostname
 }
 
-func (server *smtpServer) OnEHLO() error {
+func (server *smtpServer) TLSConfig() *tls.Config {
 	return nil
 }
 
-func (server *smtpServer) OnMessageDelivered() error {
+func (server *smtpServer) OnEHLO() *smtp.ReplyLine {
+	return nil
+}
+
+func (server *smtpServer) OnMessageDelivered(en smtp.Envelope) *smtp.ReplyLine {
+	fmt.Printf("MSG: %#v\n%s\n", en, string(en.Data))
 	return nil
 }
