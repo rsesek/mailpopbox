@@ -4,15 +4,15 @@ type Config struct {
 	SMTPPort int
 	POP3Port int
 
+	// Hostname is the name of the MX server that is running.
+	Hostname string
+
 	Servers []Server
 }
 
 type Server struct {
 	// Domain is the second component of a mail address: <local-part@domain.com>.
 	Domain string
-
-	// Hostname is the name of the MX server that is running.
-	Hostname string
 
 	TLSKeyPath  string
 	TLSCertPath string

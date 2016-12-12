@@ -39,6 +39,10 @@ func (server *smtpServer) run() {
 	}
 }
 
+func (server *smtpServer) Name() string {
+	return server.config.Hostname
+}
+
 func (server *smtpServer) OnEHLO() error {
 	return nil
 }
