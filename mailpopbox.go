@@ -24,4 +24,8 @@ func main() {
 		os.Exit(3)
 	}
 	configFile.Close()
+
+	smtp := runSMTPServer(config)
+	err = <-smtp
+	fmt.Println(err)
 }
