@@ -41,7 +41,7 @@ func AcceptConnection(netConn net.Conn, server Server) error {
 
 	var err error
 
-	conn.writeReply(250, fmt.Sprintf("%s ESMTP [%s] mailpopbox", server.Name(), netConn.LocalAddr().String()))
+	conn.writeReply(250, fmt.Sprintf("%s ESMTP [%s] (mailpopbox)", server.Name(), netConn.LocalAddr()))
 
 	for {
 		conn.line, err = conn.tp.ReadLine()
@@ -110,7 +110,15 @@ func (conn *connection) doEHLO() {
 		return
 	}
 
-	conn.writeReply(250, fmt.Sprintf("Hello %s, I am glad to meet you", conn.ehlo))
+	if cmd == "HELO" {
+		conn.writeReply(250, fmt.Sprintf("Hello %s [%s]", conn.ehlo, conn.remoteAddr))
+	} else {
+		conn.tp.PrintfLine("250-Hello %s [%s]", conn.ehlo, conn.remoteAddr)
+		if conn.server.TLSConfig() != nil {
+			conn.tp.PrintfLine("250-STARTTLS")
+		}
+		conn.tp.PrintfLine("250 SIZE %d", 40960000)
+	}
 
 	conn.state = stateInitial
 }
