@@ -2,6 +2,7 @@ package pop3
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"net/textproto"
 	"strings"
@@ -150,6 +151,24 @@ func (conn *connection) doSTAT() {
 		conn.err(errStateTxn)
 		return
 	}
+
+	msgs, err := conn.mb.ListMessages()
+	if err != nil {
+		conn.err(err.Error())
+		return
+	}
+
+	size := 0
+	num := 0
+	for _, msg := range msgs {
+		if msg.Deleted() {
+			continue
+		}
+		size += msg.Size()
+		num++
+	}
+
+	conn.ok(fmt.Sprintf("%d %d", num, size))
 }
 
 func (conn *connection) doLIST() {
@@ -157,6 +176,18 @@ func (conn *connection) doLIST() {
 		conn.err(errStateTxn)
 		return
 	}
+
+	msgs, err := conn.mb.ListMessages()
+	if err != nil {
+		conn.err(err.Error())
+		return
+	}
+
+	conn.ok("scan listing")
+	for _, msg := range msgs {
+		conn.tp.PrintfLine("%d %d", msg.ID(), msg.Size())
+	}
+	conn.tp.PrintfLine(".")
 }
 
 func (conn *connection) doRETR() {
@@ -164,12 +195,38 @@ func (conn *connection) doRETR() {
 		conn.err(errStateTxn)
 		return
 	}
+
+	idx, ok := conn.intParam()
+	if !ok {
+		return
+	}
+
+	rc, err := conn.mb.Retrieve(idx)
+	if err != nil {
+		conn.err(err.Error())
+		return
+	}
+
+	w := conn.tp.DotWriter()
+	io.Copy(w, rc)
+	w.Close()
 }
 
 func (conn *connection) doDELE() {
 	if conn.state != stateTxn {
 		conn.err(errStateTxn)
 		return
+	}
+
+	idx, ok := conn.intParam()
+	if !ok {
+		return
+	}
+
+	if err := conn.mb.Delete(idx); err != nil {
+		conn.err(err.Error())
+	} else {
+		conn.ok("")
 	}
 }
 
@@ -180,4 +237,14 @@ func (conn *connection) doRSET() {
 	}
 	conn.mb.Reset()
 	conn.ok("")
+}
+
+func (conn *connection) intParam() (int, bool) {
+	var cmd string
+	var param int
+	if _, err := fmt.Sscanf(conn.line, "%s %d", &cmd, &param); err != nil {
+		conn.err(errSyntax)
+		return 0, false
+	}
+	return param, true
 }

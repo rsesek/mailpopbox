@@ -7,12 +7,13 @@ import (
 type Message interface {
 	ID() int
 	Size() int
+	Deleted() bool
 }
 
 type Mailbox interface {
 	ListMessages() ([]Message, error)
-	Retrieve(Message) (io.ReadCloser, error)
-	Delete(Message) error
+	Retrieve(int) (io.ReadCloser, error)
+	Delete(int) error
 	Close() error
 	Reset()
 }

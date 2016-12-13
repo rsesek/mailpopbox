@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"os"
+	"path"
 
 	"src.bluestatic.org/mailpopbox/pop3"
 )
@@ -62,9 +64,31 @@ func (server *pop3Server) OpenMailbox(user, pass string) (pop3.Mailbox, error) {
 }
 
 func (server *pop3Server) openMailbox(maildrop string) (*mailbox, error) {
-	mb := &mailbox{
-		messages: make([]message, 0),
+	files, err := ioutil.ReadDir(maildrop)
+	if err != nil {
+		// TODO: hide error, log instead
+		return nil, err
 	}
+
+	mb := &mailbox{
+		messages: make([]message, 0, len(files)),
+	}
+
+	i := 0
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+
+		msg := message{
+			filename: path.Join(maildrop, file.Name()),
+			index:    i,
+			size:     file.Size(),
+		}
+		mb.messages = append(mb.messages, msg)
+		i++
+	}
+
 	return mb, nil
 }
 
@@ -75,7 +99,7 @@ type mailbox struct {
 type message struct {
 	filename string
 	index    int
-	size     int
+	size     int64
 	deleted  bool
 }
 
@@ -84,7 +108,11 @@ func (m message) ID() int {
 }
 
 func (m message) Size() int {
-	return m.size
+	return int(m.size)
+}
+
+func (m message) Deleted() bool {
+	return m.deleted
 }
 
 func (mb *mailbox) ListMessages() ([]pop3.Message, error) {
@@ -95,13 +123,16 @@ func (mb *mailbox) ListMessages() ([]pop3.Message, error) {
 	return msgs, nil
 }
 
-func (mb *mailbox) Retrieve(msg pop3.Message) (io.ReadCloser, error) {
-	filename := msg.(*message).filename
+func (mb *mailbox) Retrieve(idx int) (io.ReadCloser, error) {
+	if idx > len(mb.messages) {
+		return nil, errors.New("no such message")
+	}
+	filename := mb.messages[idx-1].filename
 	return os.Open(filename)
 }
 
-func (mb *mailbox) Delete(msg pop3.Message) error {
-	message := msg.(*message)
+func (mb *mailbox) Delete(idx int) error {
+	message := &mb.messages[idx-1]
 	if message.deleted {
 		return errors.New("already deleted")
 	}
