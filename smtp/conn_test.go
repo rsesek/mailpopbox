@@ -1,7 +1,9 @@
 package smtp
 
 import (
+	"fmt"
 	"net"
+	"net/mail"
 	"net/textproto"
 	"path/filepath"
 	"runtime"
@@ -9,16 +11,22 @@ import (
 	"testing"
 )
 
+func _fl(depth int) string {
+	_, file, line, _ := runtime.Caller(depth + 1)
+	return fmt.Sprintf("[%s:%d]", filepath.Base(file), line)
+}
+
 func ok(t testing.TB, err error) {
 	if err != nil {
-		_, file, line, _ := runtime.Caller(1)
-		t.Errorf("[%s:%d] unexpected error: %v", filepath.Base(file), line, err)
+		t.Errorf("%s unexpected error: %v", _fl(1), err)
 	}
 }
 
 func readCodeLine(t testing.TB, conn *textproto.Conn, code int) string {
 	_, message, err := conn.ReadCodeLine(code)
-	ok(t, err)
+	if err != nil {
+		t.Errorf("%s ReadCodeLine error: %v", _fl(1), err)
+	}
 	return message
 }
 
@@ -46,10 +54,20 @@ func runServer(t *testing.T, server Server) net.Listener {
 
 type testServer struct {
 	EmptyServerCallbacks
+	blockList []string
 }
 
 func (s *testServer) Name() string {
 	return "Test-Server"
+}
+
+func (s *testServer) VerifyAddress(addr mail.Address) ReplyLine {
+	for _, block := range s.blockList {
+		if block == addr.Address {
+			return ReplyBadMailbox
+		}
+	}
+	return ReplyOK
 }
 
 func createClient(t *testing.T, addr net.Addr) *textproto.Conn {
@@ -63,7 +81,9 @@ func createClient(t *testing.T, addr net.Addr) *textproto.Conn {
 
 // RFC 5321 § D.1
 func TestScenarioTypical(t *testing.T) {
-	s := testServer{}
+	s := testServer{
+		blockList: []string{"Green@foo.com"},
+	}
 	l := runServer(t, &s)
 	defer l.Close()
 
@@ -90,7 +110,7 @@ func TestScenarioTypical(t *testing.T) {
 	readCodeLine(t, conn, 250)
 
 	ok(t, conn.PrintfLine("RCPT TO:<Green@foo.com>"))
-	readCodeLine(t, conn, 250) // TODO: make this 55o by rejecting Green
+	readCodeLine(t, conn, 550)
 
 	ok(t, conn.PrintfLine("RCPT TO:<Brown@foo.com>"))
 	readCodeLine(t, conn, 250)

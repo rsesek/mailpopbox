@@ -15,6 +15,7 @@ var (
 	ReplyOK          = ReplyLine{250, "OK"}
 	ReplyBadSyntax   = ReplyLine{501, "syntax error"}
 	ReplyBadSequence = ReplyLine{503, "bad sequence of commands"}
+	ReplyBadMailbox  = ReplyLine{550, "mailbox unavailable"}
 )
 
 type Envelope struct {
@@ -29,6 +30,7 @@ type Server interface {
 	Name() string
 	TLSConfig() *tls.Config
 	OnEHLO() *ReplyLine
+	VerifyAddress(mail.Address) ReplyLine
 	OnMessageDelivered(Envelope) *ReplyLine
 }
 
@@ -40,6 +42,10 @@ func (*EmptyServerCallbacks) TLSConfig() *tls.Config {
 
 func (*EmptyServerCallbacks) OnEHLO() *ReplyLine {
 	return nil
+}
+
+func (*EmptyServerCallbacks) VerifyAddress(mail.Address) ReplyLine {
+	return ReplyOK
 }
 
 func (*EmptyServerCallbacks) OnMessageDelivered(Envelope) *ReplyLine {

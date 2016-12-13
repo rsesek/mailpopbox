@@ -165,6 +165,11 @@ func (conn *connection) doRCPT() {
 		conn.reply(ReplyBadSyntax)
 	}
 
+	if reply := conn.server.VerifyAddress(*address); reply != ReplyOK {
+		conn.reply(reply)
+		return
+	}
+
 	conn.rcptTo = append(conn.rcptTo, *address)
 
 	conn.state = stateRecipient

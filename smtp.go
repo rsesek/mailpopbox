@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"net/mail"
 
 	"src.bluestatic.org/mailpopbox/smtp"
 )
@@ -46,6 +47,10 @@ func (server *smtpServer) Name() string {
 
 func (server *smtpServer) TLSConfig() *tls.Config {
 	return nil
+}
+
+func (server *smtpServer) VerifyAddress(addr mail.Address) smtp.ReplyLine {
+	return smtp.ReplyOK
 }
 
 func (server *smtpServer) OnEHLO() *smtp.ReplyLine {
