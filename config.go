@@ -20,6 +20,9 @@ type Server struct {
 	// Password for the POP3 mailbox user, mailbox@domain.com.
 	MailboxPassword string
 
+	// Location to store the mail messages.
+	MaildropPath string
+
 	// Blacklisted addresses that should not accept mail.
 	BlacklistedAddresses []string
 }

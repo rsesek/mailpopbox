@@ -25,7 +25,13 @@ func main() {
 	}
 	configFile.Close()
 
+	pop3 := runPOP3Server(config)
 	smtp := runSMTPServer(config)
-	err = <-smtp
-	fmt.Println(err)
+
+	select {
+	case err := <-pop3:
+		fmt.Println(err)
+	case err := <-smtp:
+		fmt.Println(err)
+	}
 }
