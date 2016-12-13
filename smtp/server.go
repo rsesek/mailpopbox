@@ -31,3 +31,17 @@ type Server interface {
 	OnEHLO() *ReplyLine
 	OnMessageDelivered(Envelope) *ReplyLine
 }
+
+type EmptyServerCallbacks struct {}
+
+func (*EmptyServerCallbacks) TLSConfig() *tls.Config {
+	return nil
+}
+
+func (*EmptyServerCallbacks) OnEHLO() *ReplyLine {
+	return nil
+}
+
+func (*EmptyServerCallbacks) OnMessageDelivered(Envelope) *ReplyLine {
+	return nil
+}

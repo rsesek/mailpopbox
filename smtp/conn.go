@@ -41,7 +41,7 @@ func AcceptConnection(netConn net.Conn, server Server) error {
 
 	var err error
 
-	conn.writeReply(250, fmt.Sprintf("%s ESMTP [%s] (mailpopbox)", server.Name(), netConn.LocalAddr()))
+	conn.writeReply(220, fmt.Sprintf("%s ESMTP [%s] (mailpopbox)", server.Name(), netConn.LocalAddr()))
 
 	for {
 		conn.line, err = conn.tp.ReadLine()
@@ -58,6 +58,7 @@ func AcceptConnection(netConn net.Conn, server Server) error {
 
 		switch cmd {
 		case "QUIT":
+			conn.writeReply(221, "Goodbye")
 			conn.tp.Close()
 			break
 		case "HELO":
