@@ -196,12 +196,12 @@ func (conn *connection) doRETR() {
 		return
 	}
 
-	idx, ok := conn.intParam()
-	if !ok {
+	msg := conn.getRequestedMessage()
+	if msg == nil {
 		return
 	}
 
-	rc, err := conn.mb.Retrieve(idx)
+	rc, err := conn.mb.Retrieve(msg)
 	if err != nil {
 		conn.err(err.Error())
 		return
@@ -218,12 +218,12 @@ func (conn *connection) doDELE() {
 		return
 	}
 
-	idx, ok := conn.intParam()
-	if !ok {
+	msg := conn.getRequestedMessage()
+	if msg == nil {
 		return
 	}
 
-	if err := conn.mb.Delete(idx); err != nil {
+	if err := conn.mb.Delete(msg); err != nil {
 		conn.err(err.Error())
 	} else {
 		conn.ok("")
@@ -239,12 +239,23 @@ func (conn *connection) doRSET() {
 	conn.ok("")
 }
 
-func (conn *connection) intParam() (int, bool) {
+func (conn *connection) getRequestedMessage() Message {
 	var cmd string
-	var param int
-	if _, err := fmt.Sscanf(conn.line, "%s %d", &cmd, &param); err != nil {
+	var idx int
+	if _, err := fmt.Sscanf(conn.line, "%s %d", &cmd, &idx); err != nil {
 		conn.err(errSyntax)
-		return 0, false
+		return nil
 	}
-	return param, true
+
+	if idx < 1 {
+		conn.err("invalid message-number")
+		return nil
+	}
+
+	msg := conn.mb.GetMessage(idx)
+	if msg == nil {
+		conn.err("no such message")
+		return nil
+	}
+	return msg
 }

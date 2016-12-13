@@ -12,8 +12,9 @@ type Message interface {
 
 type Mailbox interface {
 	ListMessages() ([]Message, error)
-	Retrieve(int) (io.ReadCloser, error)
-	Delete(int) error
+	GetMessage(int) Message
+	Retrieve(Message) (io.ReadCloser, error)
+	Delete(Message) error
 	Close() error
 	Reset()
 }

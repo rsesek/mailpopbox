@@ -123,20 +123,20 @@ func (mb *mailbox) ListMessages() ([]pop3.Message, error) {
 	return msgs, nil
 }
 
-func (mb *mailbox) Retrieve(idx int) (io.ReadCloser, error) {
-	if idx > len(mb.messages) {
-		return nil, errors.New("no such message")
+func (mb *mailbox) GetMessage(id int) pop3.Message {
+	if id > len(mb.messages) {
+		return nil
 	}
-	filename := mb.messages[idx-1].filename
+	return &mb.messages[id-1]
+}
+
+func (mb *mailbox) Retrieve(msg pop3.Message) (io.ReadCloser, error) {
+	filename := msg.(*message).filename
 	return os.Open(filename)
 }
 
-func (mb *mailbox) Delete(idx int) error {
-	message := &mb.messages[idx-1]
-	if message.deleted {
-		return errors.New("already deleted")
-	}
-	message.deleted = true
+func (mb *mailbox) Delete(msg pop3.Message) error {
+	msg.(*message).deleted = true
 	return nil
 }
 
