@@ -17,9 +17,10 @@ const (
 )
 
 const (
-	errStateAuth = "not in AUTHORIZATION"
-	errStateTxn  = "not in TRANSACTION"
-	errSyntax    = "syntax error"
+	errStateAuth  = "not in AUTHORIZATION"
+	errStateTxn   = "not in TRANSACTION"
+	errSyntax     = "syntax error"
+	errDeletedMsg = "no such message - deleted"
 )
 
 type connection struct {
@@ -201,6 +202,11 @@ func (conn *connection) doRETR() {
 		return
 	}
 
+	if msg.Deleted() {
+		conn.err(errDeletedMsg)
+		return
+	}
+
 	rc, err := conn.mb.Retrieve(msg)
 	if err != nil {
 		conn.err(err.Error())
@@ -220,6 +226,11 @@ func (conn *connection) doDELE() {
 
 	msg := conn.getRequestedMessage()
 	if msg == nil {
+		return
+	}
+
+	if msg.Deleted() {
+		conn.err(errDeletedMsg)
 		return
 	}
 
