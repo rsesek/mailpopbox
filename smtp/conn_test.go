@@ -79,6 +79,24 @@ func createClient(t *testing.T, addr net.Addr) *textproto.Conn {
 	return conn
 }
 
+type requestResponse struct {
+	request      string
+	responseCode int
+	handler      func(testing.TB, *textproto.Conn)
+}
+
+func runTableTest(t testing.TB, conn *textproto.Conn, seq []requestResponse) {
+	for i, rr := range seq {
+		t.Logf("%s case %d", _fl(1), i)
+		ok(t, conn.PrintfLine(rr.request))
+		if rr.handler != nil {
+			rr.handler(t, conn)
+		} else {
+			readCodeLine(t, conn, rr.responseCode)
+		}
+	}
+}
+
 // RFC 5321 § D.1
 func TestScenarioTypical(t *testing.T) {
 	s := testServer{
@@ -125,4 +143,24 @@ func TestScenarioTypical(t *testing.T) {
 
 	ok(t, conn.PrintfLine("QUIT"))
 	readCodeLine(t, conn, 221)
+}
+
+func TestVerifyAddress(t *testing.T) {
+	s := testServer{
+		blockList: []string{"banned@test.mail"},
+	}
+	l := runServer(t, &s)
+	defer l.Close()
+
+	conn := createClient(t, l.Addr())
+	readCodeLine(t, conn, 220)
+
+	runTableTest(t, conn, []requestResponse{
+		{"EHLO test", 0, func(t testing.TB, conn *textproto.Conn) { conn.ReadResponse(250) }},
+		{"VRFY banned@test.mail", 252, nil},
+		{"VRFY allowed@test.mail", 252, nil},
+		{"MAIL FROM:<sender@example.com>", 250, nil},
+		{"RCPT TO:<banned@test.mail>", 550, nil},
+		{"QUIT", 221, nil},
+	})
 }

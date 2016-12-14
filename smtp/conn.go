@@ -74,7 +74,7 @@ func AcceptConnection(netConn net.Conn, server Server) error {
 		case "RSET":
 			conn.doRSET()
 		case "VRFY":
-			conn.doVRFY()
+			conn.writeReply(252, "I'll do my best")
 		case "EXPN":
 			conn.writeReply(550, "access denied")
 		case "NOOP":
@@ -206,9 +206,6 @@ func (conn *connection) doDATA() {
 
 	conn.state = stateInitial
 	conn.reply(ReplyOK)
-}
-
-func (conn *connection) doVRFY() {
 }
 
 func (conn *connection) doRSET() {
