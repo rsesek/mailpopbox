@@ -164,3 +164,27 @@ func TestVerifyAddress(t *testing.T) {
 		{"QUIT", 221, nil},
 	})
 }
+
+func TestCaseSensitivty(t *testing.T) {
+	s := &testServer{}
+	l := runServer(t, s)
+	defer l.Close()
+
+	conn := createClient(t, l.Addr())
+	readCodeLine(t, conn, 220)
+
+	runTableTest(t, conn, []requestResponse{
+		{"nOoP", 250, nil},
+		{"ehLO test.TEST", 0, func(t testing.TB, conn *textproto.Conn) { conn.ReadResponse(250) }},
+		{"mail FROM:<sender@example.com>", 250, nil},
+		{"RcPT tO:<receive@mail.com>", 250, nil},
+		{"DATa", 0, func(t testing.TB, conn *textproto.Conn) {
+			readCodeLine(t, conn, 354)
+
+			ok(t, conn.PrintfLine("."))
+			readCodeLine(t, conn, 250)
+		}},
+		{"MAIL FR:", 501, nil},
+		{"QUiT", 221, nil},
+	})
+}

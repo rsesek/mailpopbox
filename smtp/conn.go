@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/mail"
 	"net/textproto"
+	"strings"
 )
 
 type state int
@@ -56,7 +57,7 @@ func AcceptConnection(netConn net.Conn, server Server) error {
 			continue
 		}
 
-		switch cmd {
+		switch strings.ToUpper(cmd) {
 		case "QUIT":
 			conn.writeReply(221, "Goodbye")
 			conn.tp.Close()
@@ -101,6 +102,19 @@ func (conn *connection) writeReply(code int, msg string) {
 	}
 }
 
+// parsePath parses out either a forward-, reverse-, or return-path from the
+// current connection line. Returns a (valid-path, ReplyOK) if it was
+// successfully parsed.
+func (conn *connection) parsePath(command string) (string, ReplyLine) {
+	if len(conn.line) < len(command) {
+		return "", ReplyBadSyntax
+	}
+	if strings.ToUpper(command) != strings.ToUpper(conn.line[:len(command)]) {
+		return "", ReplyLine{500, "unrecognized command"}
+	}
+	return conn.line[len(command):], ReplyOK
+}
+
 func (conn *connection) doEHLO() {
 	conn.resetBuffers()
 
@@ -130,13 +144,13 @@ func (conn *connection) doMAIL() {
 		return
 	}
 
-	var mailFrom string
-	_, err := fmt.Sscanf(conn.line, "MAIL FROM:%s", &mailFrom)
-	if err != nil {
-		conn.reply(ReplyBadSyntax)
+	mailFrom, reply := conn.parsePath("MAIL FROM:")
+	if reply != ReplyOK {
+		conn.reply(reply)
 		return
 	}
 
+	var err error
 	conn.mailFrom, err = mail.ParseAddress(mailFrom)
 	if err != nil {
 		conn.reply(ReplyBadSyntax)
@@ -153,10 +167,9 @@ func (conn *connection) doRCPT() {
 		return
 	}
 
-	var rcptTo string
-	_, err := fmt.Sscanf(conn.line, "RCPT TO:%s", &rcptTo)
-	if err != nil {
-		conn.reply(ReplyBadSyntax)
+	rcptTo, reply := conn.parsePath("RCPT TO:")
+	if reply != ReplyOK {
+		conn.reply(reply)
 		return
 	}
 
