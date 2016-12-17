@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func _fl(depth int) string {
@@ -187,4 +188,69 @@ func TestCaseSensitivty(t *testing.T) {
 		{"MAIL FR:", 501, nil},
 		{"QUiT", 221, nil},
 	})
+}
+
+func TestGetReceivedInfo(t *testing.T) {
+	conn := connection{
+		server:     &testServer{},
+		remoteAddr: &net.IPAddr{net.IPv4(127, 0, 0, 1), ""},
+	}
+
+	now := time.Now()
+
+	const crlf = "\r\n"
+	const line1 = "Received: from remote.test. (localhost [127.0.0.1])" + crlf
+	const line2 = "by Test-Server (mailpopbox) with "
+	const msgId = "abcdef.hijk"
+	lineLast := now.Format(time.RFC1123Z) + crlf
+
+	type params struct {
+		ehlo    string
+		esmtp   bool
+		tls     bool
+		address string
+	}
+
+	tests := []struct {
+		params params
+
+		expect []string
+	}{
+		{params{"remote.test.", true, false, "foo@bar.com"},
+			[]string{line1,
+				line2 + "ESMTP id " + msgId + crlf,
+				"for <foo@bar.com>" + crlf,
+				"(using PLAINTEXT);" + crlf,
+				lineLast, ""}},
+	}
+
+	for _, test := range tests {
+		t.Logf("%#v", test.params)
+
+		conn.ehlo = test.params.ehlo
+		conn.esmtp = test.params.esmtp
+		conn.tls = test.params.tls
+
+		envelope := Envelope{
+			RcptTo:   []mail.Address{{"", test.params.address}},
+			Received: now,
+			ID:       msgId,
+		}
+
+		actual := conn.getReceivedInfo(envelope)
+		actualLines := strings.SplitAfter(string(actual), crlf)
+
+		if len(actualLines) != len(test.expect) {
+			t.Errorf("wrong numbber of lines, expected %d, got %d", len(test.expect), len(actualLines))
+			continue
+		}
+
+		for i, line := range actualLines {
+			expect := test.expect[i]
+			if expect != strings.TrimLeft(line, " ") {
+				t.Errorf("Expected equal string %q, got %q", expect, line)
+			}
+		}
+	}
+
 }

@@ -1,11 +1,13 @@
 package smtp
 
 import (
+	"crypto/rand"
 	"fmt"
 	"net"
 	"net/mail"
 	"net/textproto"
 	"strings"
+	"time"
 )
 
 type state int
@@ -23,6 +25,9 @@ type connection struct {
 
 	tp         *textproto.Conn
 	remoteAddr net.Addr
+
+	esmtp bool
+	tls   bool
 
 	state
 	line string
@@ -63,8 +68,10 @@ func AcceptConnection(netConn net.Conn, server Server) error {
 			conn.tp.Close()
 			break
 		case "HELO":
+			conn.esmtp = false
 			fallthrough
 		case "EHLO":
+			conn.esmtp = true
 			conn.doEHLO()
 		case "MAIL":
 			conn.doMAIL()
@@ -204,13 +211,19 @@ func (conn *connection) doDATA() {
 		return
 	}
 
+	received := time.Now()
 	env := Envelope{
 		RemoteAddr: conn.remoteAddr,
 		EHLO:       conn.ehlo,
 		MailFrom:   *conn.mailFrom,
 		RcptTo:     conn.rcptTo,
-		Data:       data,
+		Received:   received,
+		ID:         conn.envelopeID(received),
 	}
+
+	trace := conn.getReceivedInfo(env)
+
+	env.Data = append(trace, data...)
 
 	if reply := conn.server.OnMessageDelivered(env); reply != nil {
 		conn.reply(*reply)
@@ -219,6 +232,46 @@ func (conn *connection) doDATA() {
 
 	conn.state = stateInitial
 	conn.reply(ReplyOK)
+}
+
+func (conn *connection) envelopeID(t time.Time) string {
+	var idBytes [4]byte
+	rand.Read(idBytes[:])
+	return fmt.Sprintf("m.%d.%x", t.UnixNano(), idBytes)
+}
+
+func (conn *connection) getReceivedInfo(envelope Envelope) []byte {
+	rhost, _, err := net.SplitHostPort(conn.remoteAddr.String())
+	if err != nil {
+		rhost = conn.remoteAddr.String()
+	}
+
+	rhosts, err := net.LookupAddr(rhost)
+	if err == nil {
+		rhost = fmt.Sprintf("%s [%s]", rhosts[0], rhost)
+	}
+
+	base := fmt.Sprintf("Received: from %s (%s)\r\n        ", conn.ehlo, rhost)
+
+	with := "SMTP"
+	if conn.esmtp {
+		with = "E" + with
+	}
+	if conn.tls {
+		with += "S"
+	}
+	base += fmt.Sprintf("by %s (mailpopbox) with %s id %s\r\n        ", conn.server.Name(), with, envelope.ID)
+
+	base += fmt.Sprintf("for <%s>\r\n        ", envelope.RcptTo[0].Address)
+
+	transport := "PLAINTEXT"
+	if conn.tls {
+		// TODO: TLS version, cipher, bits
+	}
+	date := envelope.Received.Format(time.RFC1123Z) // Same as RFC 5322 § 3.3
+	base += fmt.Sprintf("(using %s);\r\n        %s\r\n", transport, date)
+
+	return []byte(base)
 }
 
 func (conn *connection) doRSET() {

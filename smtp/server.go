@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"net"
 	"net/mail"
+	"time"
 )
 
 type ReplyLine struct {
@@ -24,6 +25,8 @@ type Envelope struct {
 	MailFrom   mail.Address
 	RcptTo     []mail.Address
 	Data       []byte
+	Received   time.Time
+	ID         string
 }
 
 type Server interface {
@@ -34,7 +37,7 @@ type Server interface {
 	OnMessageDelivered(Envelope) *ReplyLine
 }
 
-type EmptyServerCallbacks struct {}
+type EmptyServerCallbacks struct{}
 
 func (*EmptyServerCallbacks) TLSConfig() *tls.Config {
 	return nil
