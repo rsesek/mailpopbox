@@ -209,6 +209,8 @@ func (conn *connection) doRETR() {
 		return
 	}
 
+	conn.ok(fmt.Sprintf("%d", msg.Size()))
+
 	w := conn.tp.DotWriter()
 	io.Copy(w, rc)
 	w.Close()

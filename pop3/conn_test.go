@@ -3,9 +3,11 @@ package pop3
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/textproto"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -92,11 +94,15 @@ func (mb *testMailbox) ListMessages() ([]Message, error) {
 }
 
 func (mb *testMailbox) GetMessage(id int) Message {
-	return mb.msgs[id]
+	if msg, ok := mb.msgs[id]; ok {
+		return msg
+	}
+	return nil
 }
 
 func (mb *testMailbox) Retrieve(msg Message) (io.ReadCloser, error) {
-	return nil, nil
+	r := strings.NewReader(msg.(*testMessage).body)
+	return ioutil.NopCloser(r), nil
 }
 
 func (mb *testMailbox) Delete(msg Message) error {
@@ -118,6 +124,7 @@ type testMessage struct {
 	id      int
 	size    int
 	deleted bool
+	body    string
 }
 
 func (m *testMessage) ID() int {
@@ -146,8 +153,8 @@ func TestExampleSession(t *testing.T) {
 	l := runServer(t, s)
 	defer l.Close()
 
-	s.mb.msgs[1] = &testMessage{1, 120, false}
-	s.mb.msgs[2] = &testMessage{2, 200, false}
+	s.mb.msgs[1] = &testMessage{1, 120, false, ""}
+	s.mb.msgs[2] = &testMessage{2, 200, false, ""}
 
 	conn, err := textproto.Dial(l.Addr().Network(), l.Addr().String())
 	ok(t, err)
@@ -240,8 +247,8 @@ func TestAuthStates(t *testing.T) {
 
 func TestDeleted(t *testing.T) {
 	s := newTestServer()
-	s.mb.msgs[1] = &testMessage{1, 999, false}
-	s.mb.msgs[2] = &testMessage{2, 10, false}
+	s.mb.msgs[1] = &testMessage{1, 999, false, ""}
+	s.mb.msgs[2] = &testMessage{2, 10, false, ""}
 
 	clientServerTest(t, s, []requestResponse{
 		{"USER u", responseOK},
@@ -265,7 +272,7 @@ func TestDeleted(t *testing.T) {
 
 func TestCaseSensitivty(t *testing.T) {
 	s := newTestServer()
-	s.mb.msgs[999] = &testMessage{999, 1, false}
+	s.mb.msgs[999] = &testMessage{999, 1, false, "a"}
 
 	clientServerTest(t, s, []requestResponse{
 		{"user u", responseOK},
@@ -273,6 +280,49 @@ func TestCaseSensitivty(t *testing.T) {
 		{"sTaT", responseOK},
 		{"retr 1", responseERR},
 		{"dele 999", responseOK},
+		{"QUIT", responseOK},
+	})
+}
+
+func TestRetr(t *testing.T) {
+	s := newTestServer()
+	s.mb.msgs[1] = &testMessage{1, 5, false, "hello"}
+	s.mb.msgs[2] = &testMessage{2, 69, false, "this\r\nis a\r\n.\r\ntest"}
+
+	clientServerTest(t, s, []requestResponse{
+		{"USER u", responseOK},
+		{"PASS p", responseOK},
+		{"STAT", responseOK},
+		{"RETR 1", func(t testing.TB, tp *textproto.Conn) string {
+			responseOK(t, tp)
+			resp, err := tp.ReadDotLines()
+			if err != nil {
+				t.Error(err)
+				return ""
+			}
+
+			expected := []string{"hello"}
+			if !reflect.DeepEqual(resp, expected) {
+				t.Errorf("Expected %v, got %v", expected, resp)
+			}
+
+			return ""
+		}},
+		{"RETR 2", func(t testing.TB, tp *textproto.Conn) string {
+			responseOK(t, tp)
+			resp, err := tp.ReadDotLines()
+			if err != nil {
+				t.Error(err)
+				return ""
+			}
+
+			expected := []string{"this", "is a", ".", "test"}
+			if !reflect.DeepEqual(resp, expected) {
+				t.Errorf("Expected %v, got %v", expected, resp)
+			}
+
+			return ""
+		}},
 		{"QUIT", responseOK},
 	})
 }
