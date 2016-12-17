@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"net"
 	"net/mail"
+	"os"
+	"path"
+	"strings"
 
 	"src.bluestatic.org/mailpopbox/smtp"
 )
@@ -50,6 +53,9 @@ func (server *smtpServer) TLSConfig() *tls.Config {
 }
 
 func (server *smtpServer) VerifyAddress(addr mail.Address) smtp.ReplyLine {
+	if server.maildropForAddress(addr) == "" {
+		return smtp.ReplyBadMailbox
+	}
 	return smtp.ReplyOK
 }
 
@@ -58,6 +64,36 @@ func (server *smtpServer) OnEHLO() *smtp.ReplyLine {
 }
 
 func (server *smtpServer) OnMessageDelivered(en smtp.Envelope) *smtp.ReplyLine {
-	fmt.Printf("MSG: %#v\n%s\n", en, string(en.Data))
+	maildrop := server.maildropForAddress(en.RcptTo[0])
+	if maildrop == "" {
+		// TODO: log error
+		return &smtp.ReplyBadMailbox
+	}
+
+	f, err := os.Create(path.Join(maildrop, en.ID+".msg"))
+	if err != nil {
+		// TODO: log error
+		return &smtp.ReplyBadMailbox
+	}
+
+	smtp.WriteEnvelopeForDelivery(f, en)
+	f.Close()
 	return nil
+}
+
+func (server *smtpServer) maildropForAddress(addr mail.Address) string {
+	domainIdx := strings.LastIndex(addr.Address, "@")
+	if domainIdx == -1 {
+		return ""
+	}
+
+	domain := addr.Address[domainIdx+1:]
+
+	for _, s := range server.config.Servers {
+		if domain == s.Domain {
+			return s.MaildropPath
+		}
+	}
+
+	return ""
 }

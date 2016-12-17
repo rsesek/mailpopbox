@@ -2,6 +2,8 @@ package smtp
 
 import (
 	"crypto/tls"
+	"fmt"
+	"io"
 	"net"
 	"net/mail"
 	"time"
@@ -27,6 +29,12 @@ type Envelope struct {
 	Data       []byte
 	Received   time.Time
 	ID         string
+}
+
+func WriteEnvelopeForDelivery(w io.Writer, e Envelope) {
+	fmt.Fprintf(w, "Delivered-To: <%s>\r\n", e.RcptTo[0].Address)
+	fmt.Fprintf(w, "Return-Path: <%s>\r\n", e.MailFrom.Address)
+	w.Write(e.Data)
 }
 
 type Server interface {
