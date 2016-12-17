@@ -59,7 +59,7 @@ func AcceptConnection(netConn net.Conn, po PostOffice) {
 			continue
 		}
 
-		switch cmd {
+		switch strings.ToUpper(cmd) {
 		case "QUIT":
 			conn.doQUIT()
 			break
@@ -118,11 +118,7 @@ func (conn *connection) doUSER() {
 		return
 	}
 
-	if _, err := fmt.Sscanf(conn.line, "USER %s", &conn.user); err != nil {
-		conn.err(errSyntax)
-		return
-	}
-
+	conn.user = conn.line[len("USER "):]
 	conn.ok("")
 }
 
@@ -137,7 +133,7 @@ func (conn *connection) doPASS() {
 		return
 	}
 
-	pass := strings.TrimPrefix(conn.line, "PASS ")
+	pass := conn.line[len("PASS "):]
 	if mbox, err := conn.po.OpenMailbox(conn.user, pass); err == nil {
 		conn.state = stateTxn
 		conn.mb = mbox

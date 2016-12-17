@@ -262,3 +262,17 @@ func TestDeleted(t *testing.T) {
 		{"QUIT", responseOK},
 	})
 }
+
+func TestCaseSensitivty(t *testing.T) {
+	s := newTestServer()
+	s.mb.msgs[999] = &testMessage{999, 1, false}
+
+	clientServerTest(t, s, []requestResponse{
+		{"user u", responseOK},
+		{"PasS p", responseOK},
+		{"sTaT", responseOK},
+		{"retr 1", responseERR},
+		{"dele 999", responseOK},
+		{"QUIT", responseOK},
+	})
+}
