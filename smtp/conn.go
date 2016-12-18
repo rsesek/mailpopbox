@@ -297,14 +297,62 @@ func (conn *connection) getReceivedInfo(envelope Envelope) []byte {
 
 	base += fmt.Sprintf("for <%s>\r\n        ", envelope.RcptTo[0].Address)
 
-	transport := "PLAINTEXT"
-	if conn.tlsNc != nil {
-		// TODO: TLS version, cipher, bits
-	}
+	transport := conn.getTransportString()
 	date := envelope.Received.Format(time.RFC1123Z) // Same as RFC 5322 § 3.3
 	base += fmt.Sprintf("(using %s);\r\n        %s\r\n", transport, date)
 
 	return []byte(base)
+}
+
+func (conn *connection) getTransportString() string {
+	if conn.tlsNc == nil {
+		return "PLAINTEXT"
+	}
+
+	ciphers := map[uint16]string{
+		tls.TLS_RSA_WITH_RC4_128_SHA:                "TLS_RSA_WITH_RC4_128_SHA",
+		tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA:           "TLS_RSA_WITH_3DES_EDE_CBC_SHA",
+		tls.TLS_RSA_WITH_AES_128_CBC_SHA:            "TLS_RSA_WITH_AES_128_CBC_SHA",
+		tls.TLS_RSA_WITH_AES_256_CBC_SHA:            "TLS_RSA_WITH_AES_256_CBC_SHA",
+		tls.TLS_RSA_WITH_AES_128_GCM_SHA256:         "TLS_RSA_WITH_AES_128_GCM_SHA256",
+		tls.TLS_RSA_WITH_AES_256_GCM_SHA384:         "TLS_RSA_WITH_AES_256_GCM_SHA384",
+		tls.TLS_ECDHE_ECDSA_WITH_RC4_128_SHA:        "TLS_ECDHE_ECDSA_WITH_RC4_128_SHA",
+		tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA:    "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA",
+		tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA:    "TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA",
+		tls.TLS_ECDHE_RSA_WITH_RC4_128_SHA:          "TLS_ECDHE_RSA_WITH_RC4_128_SHA",
+		tls.TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA:     "TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA",
+		tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA:      "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA",
+		tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA:      "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA",
+		tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256:   "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+		tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256: "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+		tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:   "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+		tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384: "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
+	}
+	versions := map[uint16]string{
+		tls.VersionSSL30: "SSLv3.0",
+		tls.VersionTLS10: "TLSv1.0",
+		tls.VersionTLS11: "TLSv1.1",
+		tls.VersionTLS12: "TLSv1.2",
+	}
+
+	state := conn.tlsNc.ConnectionState()
+
+	version := versions[state.Version]
+	cipher := ciphers[state.CipherSuite]
+
+	if version == "" {
+		version = fmt.Sprintf("%x", state.Version)
+	}
+	if cipher == "" {
+		cipher = fmt.Sprintf("%x", state.CipherSuite)
+	}
+
+	name := ""
+	if state.ServerName != "" {
+		name = fmt.Sprintf(" name=%s", state.ServerName)
+	}
+
+	return fmt.Sprintf("%s cipher=%s%s", version, cipher, name)
 }
 
 func (conn *connection) doRSET() {
