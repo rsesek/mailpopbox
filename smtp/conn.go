@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"net"
 	"net/mail"
 	"net/textproto"
@@ -61,6 +62,10 @@ func AcceptConnection(netConn net.Conn, server Server, log zap.Logger) error {
 	for {
 		conn.line, err = conn.tp.ReadLine()
 		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			conn.log.Error("ReadLine()", zap.Error(err))
 			conn.writeReply(500, "line too long")
 			continue
 		}
