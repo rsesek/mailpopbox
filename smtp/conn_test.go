@@ -178,7 +178,7 @@ func TestBadAddress(t *testing.T) {
 	runTableTest(t, conn, []requestResponse{
 		{"EHLO test", 0, func(t testing.TB, conn *textproto.Conn) { conn.ReadResponse(250) }},
 		{"MAIL FROM:<sender>", 501, nil},
-		{"MAIL FROM:<sender@foo.com>", 250, nil},
+		{"MAIL FROM:<sender@foo.com> SIZE=2163", 250, nil},
 		{"RCPT TO:<banned.net>", 501, nil},
 		{"QUIT", 221, nil},
 	})

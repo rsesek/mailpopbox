@@ -138,7 +138,12 @@ func (conn *connection) parsePath(command string) (string, ReplyLine) {
 	if strings.ToUpper(command) != strings.ToUpper(conn.line[:len(command)]) {
 		return "", ReplyLine{500, "unrecognized command"}
 	}
-	return conn.line[len(command):], ReplyOK
+	params := conn.line[len(command):]
+	idx := strings.Index(params, ">")
+	if idx == -1 {
+		return "", ReplyBadSyntax
+	}
+	return params[:idx+1], ReplyOK
 }
 
 func (conn *connection) doEHLO() {
