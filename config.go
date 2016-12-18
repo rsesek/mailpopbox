@@ -1,5 +1,9 @@
 package main
 
+import (
+	"crypto/tls"
+)
+
 type Config struct {
 	SMTPPort int
 	POP3Port int
@@ -25,4 +29,29 @@ type Server struct {
 
 	// Blacklisted addresses that should not accept mail.
 	BlacklistedAddresses []string
+}
+
+func (c Config) GetTLSConfig() (*tls.Config, error) {
+	certs := make([]tls.Certificate, 0, len(c.Servers))
+	for _, server := range c.Servers {
+		if server.TLSCertPath == "" {
+			continue
+		}
+
+		cert, err := tls.LoadX509KeyPair(server.TLSCertPath, server.TLSKeyPath)
+		if err != nil {
+			return nil, err
+		}
+		certs = append(certs, cert)
+	}
+
+	if len(certs) == 0 {
+		return nil, nil
+	}
+
+	config := &tls.Config{
+		Certificates: certs,
+	}
+	config.BuildNameToCertificate()
+	return config, nil
 }

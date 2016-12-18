@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -33,7 +34,20 @@ func (server *pop3Server) run() {
 		}
 	}
 
-	l, err := net.Listen("tcp", fmt.Sprintf(":%d", server.config.POP3Port))
+	tlsConfig, err := server.config.GetTLSConfig()
+	if err != nil {
+		server.rc <- err
+		return
+	}
+
+	addr := fmt.Sprintf(":%d", server.config.POP3Port)
+
+	var l net.Listener
+	if tlsConfig == nil {
+		l, err = net.Listen("tcp", addr)
+	} else {
+		l, err = tls.Listen("tcp", addr, tlsConfig)
+	}
 	if err != nil {
 		server.rc <- err
 		return
