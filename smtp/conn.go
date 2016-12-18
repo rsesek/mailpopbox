@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"fmt"
-	"io"
 	"net"
 	"net/mail"
 	"net/textproto"
@@ -45,7 +44,7 @@ type connection struct {
 	rcptTo   []mail.Address
 }
 
-func AcceptConnection(netConn net.Conn, server Server, log zap.Logger) error {
+func AcceptConnection(netConn net.Conn, server Server, log zap.Logger) {
 	conn := connection{
 		server:     server,
 		tp:         textproto.NewConn(netConn),
@@ -55,20 +54,18 @@ func AcceptConnection(netConn net.Conn, server Server, log zap.Logger) error {
 		state:      stateNew,
 	}
 
-	var err error
-
 	conn.writeReply(220, fmt.Sprintf("%s ESMTP [%s] (mailpopbox)", server.Name(), netConn.LocalAddr()))
 
 	for {
+		var err error
 		conn.line, err = conn.tp.ReadLine()
 		if err != nil {
-			if err == io.EOF {
-				break
-			}
 			conn.log.Error("ReadLine()", zap.Error(err))
-			conn.writeReply(500, "line too long")
-			continue
+			conn.tp.Close()
+			break
 		}
+
+		conn.log.Info("ReadLine()", zap.String("line", conn.line))
 
 		var cmd string
 		if _, err = fmt.Sscanf(conn.line, "%s", &cmd); err != nil {
@@ -109,8 +106,6 @@ func AcceptConnection(netConn net.Conn, server Server, log zap.Logger) error {
 			conn.writeReply(500, "unrecognized command")
 		}
 	}
-
-	return err
 }
 
 func (conn *connection) reply(reply ReplyLine) error {
@@ -118,11 +113,19 @@ func (conn *connection) reply(reply ReplyLine) error {
 }
 
 func (conn *connection) writeReply(code int, msg string) error {
+	conn.log.Info("writeReply", zap.Int("code", code))
+	var err error
 	if len(msg) > 0 {
-		return conn.tp.PrintfLine("%d %s", code, msg)
+		err = conn.tp.PrintfLine("%d %s", code, msg)
 	} else {
-		return conn.tp.PrintfLine("%d", code)
+		err = conn.tp.PrintfLine("%d", code)
 	}
+	if err != nil {
+		conn.log.Error("writeReply",
+			zap.Int("code", code),
+			zap.Error(err))
+	}
+	return err
 }
 
 // parsePath parses out either a forward-, reverse-, or return-path from the
@@ -262,7 +265,9 @@ func (conn *connection) doDATA() {
 
 	data, err := conn.tp.ReadDotBytes()
 	if err != nil {
-		conn.log.Error("failed to ReadDotBytes()", zap.Error(err))
+		conn.log.Error("failed to ReadDotBytes()",
+			zap.Error(err),
+			zap.String("bytes", fmt.Sprintf("%x", data)))
 		conn.writeReply(552, "transaction failed")
 		return
 	}

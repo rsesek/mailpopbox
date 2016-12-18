@@ -54,12 +54,9 @@ func AcceptConnection(netConn net.Conn, po PostOffice, log zap.Logger) {
 	for {
 		conn.line, err = conn.tp.ReadLine()
 		if err != nil {
-			if err == io.EOF {
-				break
-			}
 			conn.log.Error("ReadLine()", zap.Error(err))
-			conn.err("did't catch that")
-			continue
+			conn.tp.Close()
+			break
 		}
 
 		var cmd string
