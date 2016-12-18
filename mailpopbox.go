@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+
+	"github.com/uber-go/zap"
 )
 
 func main() {
@@ -25,8 +27,10 @@ func main() {
 	}
 	configFile.Close()
 
-	pop3 := runPOP3Server(config)
-	smtp := runSMTPServer(config)
+	log := zap.New(zap.NewTextEncoder())
+
+	pop3 := runPOP3Server(config, log)
+	smtp := runSMTPServer(config, log)
 
 	select {
 	case err := <-pop3:

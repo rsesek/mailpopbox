@@ -14,6 +14,10 @@ type ReplyLine struct {
 	Message string
 }
 
+func (l ReplyLine) String() string {
+	return fmt.Sprintf("%d %s", l.Code, l.Message)
+}
+
 var (
 	ReplyOK          = ReplyLine{250, "OK"}
 	ReplyBadSyntax   = ReplyLine{501, "syntax error"}

@@ -10,13 +10,16 @@ import (
 	"os"
 	"path"
 
+	"github.com/uber-go/zap"
+
 	"src.bluestatic.org/mailpopbox/pop3"
 )
 
-func runPOP3Server(config Config) <-chan error {
+func runPOP3Server(config Config, log zap.Logger) <-chan error {
 	server := pop3Server{
 		config: config,
 		rc:     make(chan error),
+		log:    log.With(zap.String("server", "pop3")),
 	}
 	go server.run()
 	return server.rc
@@ -25,22 +28,26 @@ func runPOP3Server(config Config) <-chan error {
 type pop3Server struct {
 	config Config
 	rc     chan error
+	log    zap.Logger
 }
 
 func (server *pop3Server) run() {
 	for _, s := range server.config.Servers {
 		if err := os.Mkdir(s.MaildropPath, 0700); err != nil && !os.IsExist(err) {
+			server.log.Error("failed to open maildrop", zap.Error(err))
 			server.rc <- err
 		}
 	}
 
 	tlsConfig, err := server.config.GetTLSConfig()
 	if err != nil {
+		server.log.Error("failed to configure TLS", zap.Error(err))
 		server.rc <- err
 		return
 	}
 
 	addr := fmt.Sprintf(":%d", server.config.POP3Port)
+	server.log.Info("starting server", zap.String("address", addr))
 
 	var l net.Listener
 	if tlsConfig == nil {
@@ -49,6 +56,7 @@ func (server *pop3Server) run() {
 		l, err = tls.Listen("tcp", addr, tlsConfig)
 	}
 	if err != nil {
+		server.log.Error("listen", zap.Error(err))
 		server.rc <- err
 		return
 	}
@@ -56,11 +64,12 @@ func (server *pop3Server) run() {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
+			server.log.Error("accept", zap.Error(err))
 			server.rc <- err
 			break
 		}
 
-		go pop3.AcceptConnection(conn, server)
+		go pop3.AcceptConnection(conn, server, server.log)
 	}
 }
 

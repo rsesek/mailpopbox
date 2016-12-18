@@ -9,6 +9,8 @@ import (
 	"net/textproto"
 	"strings"
 	"time"
+
+	"github.com/uber-go/zap"
 )
 
 type state int
@@ -32,6 +34,8 @@ type connection struct {
 
 	esmtp bool
 
+	log zap.Logger
+
 	state
 	line string
 
@@ -40,12 +44,13 @@ type connection struct {
 	rcptTo   []mail.Address
 }
 
-func AcceptConnection(netConn net.Conn, server Server) error {
+func AcceptConnection(netConn net.Conn, server Server, log zap.Logger) error {
 	conn := connection{
 		server:     server,
 		tp:         textproto.NewConn(netConn),
 		nc:         netConn,
 		remoteAddr: netConn.RemoteAddr(),
+		log:        log.With(zap.Stringer("client", netConn.RemoteAddr())),
 		state:      stateNew,
 	}
 
@@ -148,6 +153,8 @@ func (conn *connection) doEHLO() {
 		conn.tp.PrintfLine("250 SIZE %d", 40960000)
 	}
 
+	conn.log.Info("doEHLO()", zap.String("ehlo", conn.ehlo))
+
 	conn.state = stateInitial
 }
 
@@ -163,6 +170,7 @@ func (conn *connection) doSTARTTLS() {
 		return
 	}
 
+	conn.log.Info("doSTARTTLS()")
 	conn.writeReply(220, "initiate TLS connection")
 
 	newConn := tls.Server(conn.nc, tlsConfig)
@@ -173,6 +181,8 @@ func (conn *connection) doSTARTTLS() {
 	conn.tlsNc = newConn
 	conn.tp = textproto.NewConn(conn.tlsNc)
 	conn.state = stateInitial
+
+	conn.log.Info("HELO again")
 
 	conn.writeReply(220, fmt.Sprintf("%s ESMTPS [%s] (mailpopbox)",
 		conn.server.Name(), newConn.LocalAddr()))
@@ -197,6 +207,8 @@ func (conn *connection) doMAIL() {
 		return
 	}
 
+	conn.log.Info("doMAIL()", zap.String("address", conn.mailFrom.Address))
+
 	conn.state = stateMail
 	conn.reply(ReplyOK)
 }
@@ -219,9 +231,14 @@ func (conn *connection) doRCPT() {
 	}
 
 	if reply := conn.server.VerifyAddress(*address); reply != ReplyOK {
+		conn.log.Warn("invalid address",
+			zap.String("address", address.Address),
+			zap.Stringer("reply", reply))
 		conn.reply(reply)
 		return
 	}
+
+	conn.log.Info("doRCPT()", zap.String("address", address.Address))
 
 	conn.rcptTo = append(conn.rcptTo, *address)
 
@@ -236,10 +253,11 @@ func (conn *connection) doDATA() {
 	}
 
 	conn.writeReply(354, "Start mail input; end with <CRLF>.<CRLF>")
+	conn.log.Info("doDATA()")
 
 	data, err := conn.tp.ReadDotBytes()
 	if err != nil {
-		// TODO: log error
+		conn.log.Error("failed to ReadDotBytes()", zap.Error(err))
 		conn.writeReply(552, "transaction failed")
 		return
 	}
@@ -254,11 +272,17 @@ func (conn *connection) doDATA() {
 		ID:         conn.envelopeID(received),
 	}
 
+	conn.log.Info("received message",
+		zap.Int("bytes", len(data)),
+		zap.Time("date", received),
+		zap.String("id", env.ID))
+
 	trace := conn.getReceivedInfo(env)
 
 	env.Data = append(trace, data...)
 
 	if reply := conn.server.OnMessageDelivered(env); reply != nil {
+		conn.log.Warn("message was rejected", zap.String("id", env.ID))
 		conn.reply(*reply)
 		return
 	}
@@ -356,6 +380,7 @@ func (conn *connection) getTransportString() string {
 }
 
 func (conn *connection) doRSET() {
+	conn.log.Info("doRSET()")
 	conn.state = stateInitial
 	conn.resetBuffers()
 	conn.reply(ReplyOK)

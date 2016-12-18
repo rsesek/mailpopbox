@@ -6,6 +6,8 @@ import (
 	"net"
 	"net/textproto"
 	"strings"
+
+	"github.com/uber-go/zap"
 )
 
 type state int
@@ -30,17 +32,20 @@ type connection struct {
 	tp         *textproto.Conn
 	remoteAddr net.Addr
 
+	log zap.Logger
+
 	state
 	line string
 
 	user string
 }
 
-func AcceptConnection(netConn net.Conn, po PostOffice) {
+func AcceptConnection(netConn net.Conn, po PostOffice, log zap.Logger) {
 	conn := connection{
 		po:    po,
 		tp:    textproto.NewConn(netConn),
 		state: stateAuth,
+		log:   log.With(zap.Stringer("client", netConn.RemoteAddr())),
 	}
 
 	var err error
@@ -50,6 +55,7 @@ func AcceptConnection(netConn net.Conn, po PostOffice) {
 		conn.line, err = conn.tp.ReadLine()
 		if err != nil {
 			conn.err("did't catch that")
+			conn.log.Error("ReadLine()", zap.Error(err))
 			continue
 		}
 
@@ -135,10 +141,12 @@ func (conn *connection) doPASS() {
 
 	pass := conn.line[len("PASS "):]
 	if mbox, err := conn.po.OpenMailbox(conn.user, pass); err == nil {
+		conn.log.Info("authenticated", zap.String("user", conn.user))
 		conn.state = stateTxn
 		conn.mb = mbox
 		conn.ok("")
 	} else {
+		conn.log.Error("PASS", zap.Error(err))
 		conn.err(err.Error())
 	}
 }
@@ -151,6 +159,7 @@ func (conn *connection) doSTAT() {
 
 	msgs, err := conn.mb.ListMessages()
 	if err != nil {
+		conn.log.Error("STAT", zap.Error(err))
 		conn.err(err.Error())
 		return
 	}
@@ -176,6 +185,7 @@ func (conn *connection) doLIST() {
 
 	msgs, err := conn.mb.ListMessages()
 	if err != nil {
+		conn.log.Error("LIST", zap.Error(err))
 		conn.err(err.Error())
 		return
 	}
@@ -205,6 +215,7 @@ func (conn *connection) doRETR() {
 
 	rc, err := conn.mb.Retrieve(msg)
 	if err != nil {
+		conn.log.Error("RETR", zap.Error(err))
 		conn.err(err.Error())
 		return
 	}
@@ -233,6 +244,7 @@ func (conn *connection) doDELE() {
 	}
 
 	if err := conn.mb.Delete(msg); err != nil {
+		conn.log.Error("DELE", zap.Error(err))
 		conn.err(err.Error())
 	} else {
 		conn.ok("")

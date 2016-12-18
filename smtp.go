@@ -9,13 +9,16 @@ import (
 	"path"
 	"strings"
 
+	"github.com/uber-go/zap"
+
 	"src.bluestatic.org/mailpopbox/smtp"
 )
 
-func runSMTPServer(config Config) <-chan error {
+func runSMTPServer(config Config, log zap.Logger) <-chan error {
 	server := smtpServer{
 		config: config,
 		rc:     make(chan error),
+		log:    log.With(zap.String("server", "smtp")),
 	}
 	go server.run()
 	return server.rc
@@ -25,6 +28,8 @@ type smtpServer struct {
 	config    Config
 	tlsConfig *tls.Config
 
+	log zap.Logger
+
 	rc chan error
 }
 
@@ -32,11 +37,16 @@ func (server *smtpServer) run() {
 	var err error
 	server.tlsConfig, err = server.config.GetTLSConfig()
 	if err != nil {
+		server.log.Error("failed to configure TLS", zap.Error(err))
 		server.rc <- err
 	}
 
-	l, err := net.Listen("tcp", fmt.Sprintf(":%d", server.config.SMTPPort))
+	addr := fmt.Sprintf(":%d", server.config.SMTPPort)
+	server.log.Info("starting server", zap.String("address", addr))
+
+	l, err := net.Listen("tcp", addr)
 	if err != nil {
+		server.log.Error("listen", zap.Error(err))
 		server.rc <- err
 		return
 	}
@@ -44,11 +54,12 @@ func (server *smtpServer) run() {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
+			server.log.Error("accept", zap.Error(err))
 			server.rc <- err
 			return
 		}
 
-		go smtp.AcceptConnection(conn, server)
+		go smtp.AcceptConnection(conn, server, server.log)
 	}
 }
 
