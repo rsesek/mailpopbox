@@ -22,11 +22,19 @@ func runSMTPServer(config Config) <-chan error {
 }
 
 type smtpServer struct {
-	config Config
-	rc     chan error
+	config    Config
+	tlsConfig *tls.Config
+
+	rc chan error
 }
 
 func (server *smtpServer) run() {
+	var err error
+	server.tlsConfig, err = server.config.GetTLSConfig()
+	if err != nil {
+		server.rc <- err
+	}
+
 	l, err := net.Listen("tcp", fmt.Sprintf(":%d", server.config.SMTPPort))
 	if err != nil {
 		server.rc <- err
@@ -49,7 +57,7 @@ func (server *smtpServer) Name() string {
 }
 
 func (server *smtpServer) TLSConfig() *tls.Config {
-	return nil
+	return server.tlsConfig
 }
 
 func (server *smtpServer) VerifyAddress(addr mail.Address) smtp.ReplyLine {
