@@ -62,7 +62,7 @@ func AcceptConnection(netConn net.Conn, server Server, log zap.Logger) {
 		if err != nil {
 			conn.log.Error("ReadLine()", zap.Error(err))
 			conn.tp.Close()
-			break
+			return
 		}
 
 		conn.log.Info("ReadLine()", zap.String("line", conn.line))
@@ -77,7 +77,7 @@ func AcceptConnection(netConn net.Conn, server Server, log zap.Logger) {
 		case "QUIT":
 			conn.writeReply(221, "Goodbye")
 			conn.tp.Close()
-			break
+			return
 		case "HELO":
 			conn.esmtp = false
 			fallthrough

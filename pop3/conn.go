@@ -56,7 +56,7 @@ func AcceptConnection(netConn net.Conn, po PostOffice, log zap.Logger) {
 		if err != nil {
 			conn.log.Error("ReadLine()", zap.Error(err))
 			conn.tp.Close()
-			break
+			return
 		}
 
 		var cmd string
@@ -68,7 +68,7 @@ func AcceptConnection(netConn net.Conn, po PostOffice, log zap.Logger) {
 		switch strings.ToUpper(cmd) {
 		case "QUIT":
 			conn.doQUIT()
-			break
+			return
 		case "USER":
 			conn.doUSER()
 		case "PASS":
