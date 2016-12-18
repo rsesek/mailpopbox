@@ -11,6 +11,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/uber-go/zap"
 )
 
 func _fl(depth int) string {
@@ -59,7 +61,7 @@ func runServer(t *testing.T, po PostOffice) net.Listener {
 			if err != nil {
 				return
 			}
-			go AcceptConnection(conn, po)
+			go AcceptConnection(conn, po, zap.New(zap.NullEncoder()))
 		}
 	}()
 	return l

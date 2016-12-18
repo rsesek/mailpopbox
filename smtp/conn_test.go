@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/uber-go/zap"
 )
 
 func _fl(depth int) string {
@@ -46,7 +48,7 @@ func runServer(t *testing.T, server Server) net.Listener {
 			if err != nil {
 				return
 			}
-			go AcceptConnection(conn, server)
+			go AcceptConnection(conn, server, zap.New(zap.NullEncoder()))
 		}
 	}()
 
@@ -166,6 +168,22 @@ func TestVerifyAddress(t *testing.T) {
 	})
 }
 
+func TestBadAddress(t *testing.T) {
+	l := runServer(t, &testServer{})
+	defer l.Close()
+
+	conn := createClient(t, l.Addr())
+	readCodeLine(t, conn, 220)
+
+	runTableTest(t, conn, []requestResponse{
+		{"EHLO test", 0, func(t testing.TB, conn *textproto.Conn) { conn.ReadResponse(250) }},
+		{"MAIL FROM:<sender>", 501, nil},
+		{"MAIL FROM:<sender@foo.com>", 250, nil},
+		{"RCPT TO:<banned.net>", 501, nil},
+		{"QUIT", 221, nil},
+	})
+}
+
 func TestCaseSensitivty(t *testing.T) {
 	s := &testServer{}
 	l := runServer(t, s)
@@ -229,7 +247,7 @@ func TestGetReceivedInfo(t *testing.T) {
 
 		conn.ehlo = test.params.ehlo
 		conn.esmtp = test.params.esmtp
-		conn.tls = test.params.tls
+		//conn.tls = test.params.tls
 
 		envelope := Envelope{
 			RcptTo:   []mail.Address{{"", test.params.address}},

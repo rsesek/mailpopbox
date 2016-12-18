@@ -210,7 +210,7 @@ func (conn *connection) doMAIL() {
 
 	var err error
 	conn.mailFrom, err = mail.ParseAddress(mailFrom)
-	if err != nil {
+	if err != nil || conn.mailFrom == nil {
 		conn.reply(ReplyBadSyntax)
 		return
 	}
@@ -236,6 +236,7 @@ func (conn *connection) doRCPT() {
 	address, err := mail.ParseAddress(rcptTo)
 	if err != nil {
 		conn.reply(ReplyBadSyntax)
+		return
 	}
 
 	if reply := conn.server.VerifyAddress(*address); reply != ReplyOK {
