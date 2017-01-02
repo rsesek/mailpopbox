@@ -375,3 +375,50 @@ func TestUidl(t *testing.T) {
 		{"QUIT", responseOK},
 	})
 }
+
+func TestDele(t *testing.T) {
+	s := newTestServer()
+	s.mb.msgs[1] = &testMessage{1, 3, false, "abc"}
+	s.mb.msgs[2] = &testMessage{2, 1, false, "d"}
+
+	clientServerTest(t, s, []requestResponse{
+		{"USER u", responseOK},
+		{"PASS p", responseOK},
+		{"STAT", expectOKResponse(func(s string) bool {
+			return s == "+OK 2 4"
+		})},
+		{"DELE 1", responseOK},
+		{"STAT", expectOKResponse(func(s string) bool {
+			return s == "+OK 1 1"
+		})},
+		{"RSET", responseOK},
+		{"STAT", expectOKResponse(func(s string) bool {
+			return s == "+OK 2 4"
+		})},
+		{"QUIT", responseOK},
+	})
+
+	if s.mb.msgs[1].Deleted() || s.mb.msgs[2].Deleted() {
+		t.Errorf("RSET should not delete a message")
+	}
+
+	clientServerTest(t, s, []requestResponse{
+		{"USER u", responseOK},
+		{"PASS p", responseOK},
+		{"STAT", expectOKResponse(func(s string) bool {
+			return s == "+OK 2 4"
+		})},
+		{"DELE 1", responseOK},
+		{"STAT", expectOKResponse(func(s string) bool {
+			return s == "+OK 1 1"
+		})},
+		{"QUIT", responseOK},
+	})
+
+	if !s.mb.msgs[1].Deleted() {
+		t.Errorf("DELE did not work")
+	}
+	if s.mb.msgs[2].Deleted() {
+		t.Errorf("DELE the wrong message")
+	}
+}

@@ -178,7 +178,7 @@ func (mb *mailbox) Close() error {
 }
 
 func (mb *mailbox) Reset() {
-	for _, message := range mb.messages {
-		message.deleted = false
+	for i, _ := range mb.messages {
+		mb.messages[i].deleted = false
 	}
 }
