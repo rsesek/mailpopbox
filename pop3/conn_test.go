@@ -425,3 +425,57 @@ func TestDele(t *testing.T) {
 		t.Errorf("DELE the wrong message")
 	}
 }
+
+func TestCapa(t *testing.T) {
+	s := newTestServer()
+
+	capaTest := func(t testing.TB, tp *textproto.Conn) string {
+		responseOK(t, tp)
+		if t.Failed() {
+			return ""
+		}
+
+		resp, err := tp.ReadDotLines()
+		if err != nil {
+			t.Error(err)
+			return ""
+		}
+
+		const (
+			capNeeded = iota
+			capSeen
+			capOK
+		)
+
+		caps := map[string]int{
+			"USER": capNeeded,
+			"UIDL": capNeeded,
+		}
+		for _, line := range resp {
+			if val, ok := caps[line]; ok {
+				if val == capNeeded {
+					caps[line] = capOK
+				} else {
+					t.Errorf("unxpected capa value %q", line)
+				}
+			} else {
+				caps[line] = capSeen
+			}
+		}
+		for c, val := range caps {
+			if val != capOK {
+				t.Errorf("unexpected capa value for %q: %d", c, val)
+			}
+		}
+		return ""
+	}
+
+	clientServerTest(t, s, []requestResponse{
+		{"CAPA", capaTest},
+		{"USER u", responseOK},
+		{"CAPA", capaTest},
+		{"PASS p", responseOK},
+		{"CAPA", capaTest},
+		{"QUIT", responseOK},
+	})
+}

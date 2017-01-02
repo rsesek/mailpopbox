@@ -92,6 +92,8 @@ func AcceptConnection(netConn net.Conn, po PostOffice, log zap.Logger) {
 			conn.doRSET()
 		case "UIDL":
 			conn.doUIDL()
+		case "CAPA":
+			conn.doCAPA()
 		default:
 			conn.err("unknown command")
 		}
@@ -304,6 +306,19 @@ func (conn *connection) doUIDL() {
 		conn.tp.PrintfLine("%d %s", msg.ID(), msg.UniqueID())
 	}
 	conn.tp.PrintfLine(".")
+}
+
+func (conn *connection) doCAPA() {
+	conn.ok("capabilitiy list")
+
+	caps := []string{
+		"USER",
+		"UIDL",
+		".",
+	}
+	for _, c := range caps {
+		conn.tp.PrintfLine(c)
+	}
 }
 
 func (conn *connection) getRequestedMessage() Message {
