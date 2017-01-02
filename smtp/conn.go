@@ -188,21 +188,17 @@ func (conn *connection) doSTARTTLS() {
 	conn.log.Info("doSTARTTLS()")
 	conn.writeReply(220, "initiate TLS connection")
 
-	newConn := tls.Server(conn.nc, tlsConfig)
-	tp := textproto.NewConn(newConn)
-
-	err := tp.PrintfLine("220 %s ESMTPS [%s] (mailpopbox)",
-		conn.server.Name(), newConn.LocalAddr())
-	if err != nil {
+	tlsConn := tls.Server(conn.nc, tlsConfig)
+	if err := tlsConn.Handshake(); err != nil {
 		conn.log.Error("failed to do TLS handshake", zap.Error(err))
 		return
 	}
 
-	conn.nc = newConn
-	conn.tp = tp
+	conn.nc = tlsConn
+	conn.tp = textproto.NewConn(tlsConn)
 	conn.state = stateNew
 
-	connState := newConn.ConnectionState()
+	connState := tlsConn.ConnectionState()
 	conn.tls = &connState
 
 	conn.log.Info("TLS connection done", zap.String("state", conn.getTransportString()))
