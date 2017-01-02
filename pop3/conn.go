@@ -93,7 +93,6 @@ func AcceptConnection(netConn net.Conn, po PostOffice, log zap.Logger) {
 		case "UIDL":
 			conn.doUIDL()
 		default:
-			conn.log.Error("unknown command")
 			conn.err("unknown command")
 		}
 	}
@@ -241,6 +240,7 @@ func (conn *connection) doRETR() {
 		return
 	}
 
+	conn.log.Info("retreive message", zap.String("unique-id", msg.UniqueID()))
 	conn.ok(fmt.Sprintf("%d", msg.Size()))
 
 	w := conn.tp.DotWriter()
@@ -268,6 +268,7 @@ func (conn *connection) doDELE() {
 		conn.log.Error("failed to delete message", zap.Error(err))
 		conn.err(err.Error())
 	} else {
+		conn.log.Info("delete message", zap.String("unique-id", msg.UniqueID()))
 		conn.ok("")
 	}
 }
@@ -278,6 +279,7 @@ func (conn *connection) doRSET() {
 		return
 	}
 	conn.mb.Reset()
+	conn.log.Info("reset")
 	conn.ok("")
 }
 
