@@ -126,6 +126,11 @@ type message struct {
 	deleted  bool
 }
 
+func (m message) UniqueID() string {
+	l := len(m.filename)
+	return path.Base(m.filename[:l-len(".msg")])
+}
+
 func (m message) ID() int {
 	return m.index + 1
 }

@@ -5,6 +5,7 @@ import (
 )
 
 type Message interface {
+	UniqueID() string
 	ID() int
 	Size() int
 	Deleted() bool

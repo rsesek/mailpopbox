@@ -129,6 +129,10 @@ type testMessage struct {
 	body    string
 }
 
+func (m *testMessage) UniqueID() string {
+	return fmt.Sprintf("%p", m)
+}
+
 func (m *testMessage) ID() int {
 	return m.id
 }
@@ -297,6 +301,10 @@ func TestRetr(t *testing.T) {
 		{"STAT", responseOK},
 		{"RETR 1", func(t testing.TB, tp *textproto.Conn) string {
 			responseOK(t, tp)
+			if t.Failed() {
+				return ""
+			}
+
 			resp, err := tp.ReadDotLines()
 			if err != nil {
 				t.Error(err)
@@ -312,6 +320,10 @@ func TestRetr(t *testing.T) {
 		}},
 		{"RETR 2", func(t testing.TB, tp *textproto.Conn) string {
 			responseOK(t, tp)
+			if t.Failed() {
+				return ""
+			}
+
 			resp, err := tp.ReadDotLines()
 			if err != nil {
 				t.Error(err)
@@ -319,6 +331,41 @@ func TestRetr(t *testing.T) {
 			}
 
 			expected := []string{"this", "is a", ".", "test"}
+			if !reflect.DeepEqual(resp, expected) {
+				t.Errorf("Expected %v, got %v", expected, resp)
+			}
+
+			return ""
+		}},
+		{"QUIT", responseOK},
+	})
+}
+
+func TestUidl(t *testing.T) {
+	s := newTestServer()
+	s.mb.msgs[1] = &testMessage{1, 3, false, "abc"}
+	s.mb.msgs[2] = &testMessage{2, 1, true, "Z"}
+	s.mb.msgs[3] = &testMessage{3, 4, false, "test"}
+
+	clientServerTest(t, s, []requestResponse{
+		{"USER u", responseOK},
+		{"PASS p", responseOK},
+		{"UIDL", func(t testing.TB, tp *textproto.Conn) string {
+			responseOK(t, tp)
+			if t.Failed() {
+				return ""
+			}
+
+			resp, err := tp.ReadDotLines()
+			if err != nil {
+				t.Error(err)
+				return ""
+			}
+
+			expected := []string{
+				fmt.Sprintf("1 %p", s.mb.msgs[1]),
+				fmt.Sprintf("3 %p", s.mb.msgs[3]),
+			}
 			if !reflect.DeepEqual(resp, expected) {
 				t.Errorf("Expected %v, got %v", expected, resp)
 			}

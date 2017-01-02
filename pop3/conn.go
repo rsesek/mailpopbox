@@ -90,6 +90,8 @@ func AcceptConnection(netConn net.Conn, po PostOffice, log zap.Logger) {
 			conn.ok("")
 		case "RSET":
 			conn.doRSET()
+		case "UIDL":
+			conn.doUIDL()
 		default:
 			conn.log.Error("unknown command")
 			conn.err("unknown command")
@@ -265,6 +267,29 @@ func (conn *connection) doRSET() {
 	}
 	conn.mb.Reset()
 	conn.ok("")
+}
+
+func (conn *connection) doUIDL() {
+	if conn.state != stateTxn {
+		conn.err(errStateTxn)
+		return
+	}
+
+	msgs, err := conn.mb.ListMessages()
+	if err != nil {
+		conn.log.Error("failed to list messages", zap.Error(err))
+		conn.err(err.Error())
+		return
+	}
+
+	conn.ok("unique-id listing")
+	for _, msg := range msgs {
+		if msg.Deleted() {
+			continue
+		}
+		conn.tp.PrintfLine("%d %s", msg.ID(), msg.UniqueID())
+	}
+	conn.tp.PrintfLine(".")
 }
 
 func (conn *connection) getRequestedMessage() Message {
