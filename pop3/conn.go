@@ -41,15 +41,18 @@ type connection struct {
 }
 
 func AcceptConnection(netConn net.Conn, po PostOffice, log zap.Logger) {
+	log = log.With(zap.Stringer("client", netConn.RemoteAddr()))
 	conn := connection{
 		po:    po,
 		tp:    textproto.NewConn(netConn),
 		state: stateAuth,
-		log:   log.With(zap.Stringer("client", netConn.RemoteAddr())),
+		log:   log,
 	}
 
-	var err error
+	conn.log.Info("accepted connection")
 	conn.ok(fmt.Sprintf("POP3 (mailpopbox) server %s", po.Name()))
+
+	var err error
 
 	for {
 		conn.line, err = conn.tp.ReadLine()
@@ -64,6 +67,8 @@ func AcceptConnection(netConn net.Conn, po PostOffice, log zap.Logger) {
 			conn.err("invalid command")
 			continue
 		}
+
+		conn.log = log.With(zap.String("command", cmd))
 
 		switch strings.ToUpper(cmd) {
 		case "QUIT":
@@ -86,6 +91,7 @@ func AcceptConnection(netConn net.Conn, po PostOffice, log zap.Logger) {
 		case "RSET":
 			conn.doRSET()
 		default:
+			conn.log.Error("unknown command")
 			conn.err("unknown command")
 		}
 	}
@@ -99,6 +105,7 @@ func (conn *connection) ok(msg string) {
 }
 
 func (conn *connection) err(msg string) {
+	conn.log.Error("error", zap.String("message", msg))
 	if len(msg) > 0 {
 		msg = " " + msg
 		conn.tp.PrintfLine("-ERR%s", msg)
@@ -146,7 +153,7 @@ func (conn *connection) doPASS() {
 		conn.mb = mbox
 		conn.ok("")
 	} else {
-		conn.log.Error("PASS", zap.Error(err))
+		conn.log.Error("failed to open mailbox", zap.Error(err))
 		conn.err(err.Error())
 	}
 }
@@ -159,7 +166,7 @@ func (conn *connection) doSTAT() {
 
 	msgs, err := conn.mb.ListMessages()
 	if err != nil {
-		conn.log.Error("STAT", zap.Error(err))
+		conn.log.Error("failed to list messages", zap.Error(err))
 		conn.err(err.Error())
 		return
 	}
@@ -185,7 +192,7 @@ func (conn *connection) doLIST() {
 
 	msgs, err := conn.mb.ListMessages()
 	if err != nil {
-		conn.log.Error("LIST", zap.Error(err))
+		conn.log.Error("failed to list messages", zap.Error(err))
 		conn.err(err.Error())
 		return
 	}
@@ -215,7 +222,7 @@ func (conn *connection) doRETR() {
 
 	rc, err := conn.mb.Retrieve(msg)
 	if err != nil {
-		conn.log.Error("RETR", zap.Error(err))
+		conn.log.Error("failed to retrieve messages", zap.Error(err))
 		conn.err(err.Error())
 		return
 	}
@@ -244,7 +251,7 @@ func (conn *connection) doDELE() {
 	}
 
 	if err := conn.mb.Delete(msg); err != nil {
-		conn.log.Error("DELE", zap.Error(err))
+		conn.log.Error("failed to delete message", zap.Error(err))
 		conn.err(err.Error())
 	} else {
 		conn.ok("")
