@@ -133,7 +133,13 @@ func (conn *connection) doUSER() {
 		return
 	}
 
-	conn.user = conn.line[len("USER "):]
+	cmd := len("USER ")
+	if len(conn.line) < cmd {
+		conn.err("invalid user")
+		return
+	}
+
+	conn.user = conn.line[cmd:]
 	conn.ok("")
 }
 
@@ -148,7 +154,13 @@ func (conn *connection) doPASS() {
 		return
 	}
 
-	pass := conn.line[len("PASS "):]
+	cmd := len("PASS ")
+	if len(conn.line) < cmd {
+		conn.err("invalid pass")
+		return
+	}
+
+	pass := conn.line[cmd:]
 	if mbox, err := conn.po.OpenMailbox(conn.user, pass); err == nil {
 		conn.log.Info("authenticated", zap.String("user", conn.user))
 		conn.state = stateTxn
