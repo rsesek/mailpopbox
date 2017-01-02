@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 
@@ -87,11 +88,24 @@ type testMailbox struct {
 	msgs map[int]*testMessage
 }
 
+type MessageList []Message
+
+func (l MessageList) Len() int {
+	return len(l)
+}
+func (l MessageList) Less(i, j int) bool {
+	return l[i].ID() < l[j].ID()
+}
+func (l MessageList) Swap(i, j int) {
+	l[i], l[j] = l[j], l[i]
+}
+
 func (mb *testMailbox) ListMessages() ([]Message, error) {
 	msgs := make([]Message, 0, len(mb.msgs))
 	for i, _ := range mb.msgs {
 		msgs = append(msgs, mb.msgs[i])
 	}
+	sort.Sort(MessageList(msgs))
 	return msgs, nil
 }
 
