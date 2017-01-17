@@ -145,7 +145,7 @@ func (conn *connection) parsePath(command string) (string, ReplyLine) {
 	if idx == -1 {
 		return "", ReplyBadSyntax
 	}
-	return params[:idx+1], ReplyOK
+	return strings.ToLower(params[:idx+1]), ReplyOK
 }
 
 func (conn *connection) doEHLO() {

@@ -66,7 +66,7 @@ func (s *testServer) Name() string {
 
 func (s *testServer) VerifyAddress(addr mail.Address) ReplyLine {
 	for _, block := range s.blockList {
-		if block == addr.Address {
+		if strings.ToLower(block) == addr.Address {
 			return ReplyBadMailbox
 		}
 	}
@@ -186,6 +186,7 @@ func TestBadAddress(t *testing.T) {
 
 func TestCaseSensitivty(t *testing.T) {
 	s := &testServer{}
+	s.blockList = []string{"reject@mail.com"}
 	l := runServer(t, s)
 	defer l.Close()
 
@@ -197,6 +198,8 @@ func TestCaseSensitivty(t *testing.T) {
 		{"ehLO test.TEST", 0, func(t testing.TB, conn *textproto.Conn) { conn.ReadResponse(250) }},
 		{"mail FROM:<sender@example.com>", 250, nil},
 		{"RcPT tO:<receive@mail.com>", 250, nil},
+		{"RCPT TO:<reject@MAIL.com>", 550, nil},
+		{"RCPT TO:<reject@mail.com>", 550, nil},
 		{"DATa", 0, func(t testing.TB, conn *textproto.Conn) {
 			readCodeLine(t, conn, 354)
 
