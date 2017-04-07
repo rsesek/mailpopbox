@@ -15,35 +15,64 @@ import (
 	"src.bluestatic.org/mailpopbox/pop3"
 )
 
-func runPOP3Server(config Config, log zap.Logger) <-chan error {
+func runPOP3Server(config Config, log zap.Logger) <-chan ServerControlMessage {
 	server := pop3Server{
-		config: config,
-		rc:     make(chan error),
-		log:    log.With(zap.String("server", "pop3")),
+		config:      config,
+		controlChan: make(chan ServerControlMessage),
+		log:         log.With(zap.String("server", "pop3")),
 	}
 	go server.run()
-	return server.rc
+	return server.controlChan
 }
 
 type pop3Server struct {
-	config Config
-	rc     chan error
-	log    zap.Logger
+	config      Config
+	controlChan chan ServerControlMessage
+	log         zap.Logger
 }
 
 func (server *pop3Server) run() {
 	for _, s := range server.config.Servers {
 		if err := os.Mkdir(s.MaildropPath, 0700); err != nil && !os.IsExist(err) {
 			server.log.Error("failed to open maildrop", zap.Error(err))
-			server.rc <- err
+			server.controlChan <- ServerControlFatalError
 		}
 	}
 
+	l, err := server.newListener()
+	if err != nil {
+		server.controlChan <- ServerControlFatalError
+		return
+	}
+
+	connChan := make(chan net.Conn)
+	go RunAcceptLoop(l, connChan, server.log)
+
+	reloadChan := CreateReloadSignal()
+
+	for {
+		select {
+		case <-reloadChan:
+			server.log.Info("restarting server")
+			l.Close()
+			server.controlChan <- ServerControlRestart
+			break
+		case conn, ok := <-connChan:
+			if ok {
+				go pop3.AcceptConnection(conn, server, server.log)
+			} else {
+				server.controlChan <- ServerControlFatalError
+				break
+			}
+		}
+	}
+}
+
+func (server *pop3Server) newListener() (net.Listener, error) {
 	tlsConfig, err := server.config.GetTLSConfig()
 	if err != nil {
 		server.log.Error("failed to configure TLS", zap.Error(err))
-		server.rc <- err
-		return
+		return nil, err
 	}
 
 	addr := fmt.Sprintf(":%d", server.config.POP3Port)
@@ -57,20 +86,10 @@ func (server *pop3Server) run() {
 	}
 	if err != nil {
 		server.log.Error("listen", zap.Error(err))
-		server.rc <- err
-		return
+		return nil, err
 	}
 
-	for {
-		conn, err := l.Accept()
-		if err != nil {
-			server.log.Error("accept", zap.Error(err))
-			server.rc <- err
-			break
-		}
-
-		go pop3.AcceptConnection(conn, server, server.log)
-	}
+	return l, nil
 }
 
 func (server *pop3Server) Name() string {

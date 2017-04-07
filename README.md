@@ -4,6 +4,11 @@ Mailpopbox is a combination delivery SMTP server and POP mailbox. The purpose is
 catch-all delivery server for an MX domain. All messages that it receives are deposited into a
 single mailbox, which can then be accessed using the POP3 protocol.
 
+## TLS Support
+
+TLS is recommended in production environments. To facilitate live-reloading of certificates, you can
+send a running instance SIGHUP.
+
 ## RFCs
 
 This server implements the following RFCs:

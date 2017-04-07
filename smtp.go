@@ -14,14 +14,14 @@ import (
 	"src.bluestatic.org/mailpopbox/smtp"
 )
 
-func runSMTPServer(config Config, log zap.Logger) <-chan error {
+func runSMTPServer(config Config, log zap.Logger) <-chan ServerControlMessage {
 	server := smtpServer{
-		config: config,
-		rc:     make(chan error),
-		log:    log.With(zap.String("server", "smtp")),
+		config:      config,
+		controlChan: make(chan ServerControlMessage),
+		log:         log.With(zap.String("server", "smtp")),
 	}
 	go server.run()
-	return server.rc
+	return server.controlChan
 }
 
 type smtpServer struct {
@@ -30,15 +30,12 @@ type smtpServer struct {
 
 	log zap.Logger
 
-	rc chan error
+	controlChan chan ServerControlMessage
 }
 
 func (server *smtpServer) run() {
-	var err error
-	server.tlsConfig, err = server.config.GetTLSConfig()
-	if err != nil {
-		server.log.Error("failed to configure TLS", zap.Error(err))
-		server.rc <- err
+	if !server.loadTLSConfig() {
+		return
 	}
 
 	addr := fmt.Sprintf(":%d", server.config.SMTPPort)
@@ -47,20 +44,41 @@ func (server *smtpServer) run() {
 	l, err := net.Listen("tcp", addr)
 	if err != nil {
 		server.log.Error("listen", zap.Error(err))
-		server.rc <- err
+		server.controlChan <- ServerControlFatalError
 		return
 	}
 
-	for {
-		conn, err := l.Accept()
-		if err != nil {
-			server.log.Error("accept", zap.Error(err))
-			server.rc <- err
-			return
-		}
+	connChan := make(chan net.Conn)
+	go RunAcceptLoop(l, connChan, server.log)
 
-		go smtp.AcceptConnection(conn, server, server.log)
+	reloadChan := CreateReloadSignal()
+
+	for {
+		select {
+		case <-reloadChan:
+			if !server.loadTLSConfig() {
+				return
+			}
+		case conn, ok := <-connChan:
+			if ok {
+				go smtp.AcceptConnection(conn, server, server.log)
+			} else {
+				break
+			}
+		}
 	}
+}
+
+func (server *smtpServer) loadTLSConfig() bool {
+	var err error
+	server.tlsConfig, err = server.config.GetTLSConfig()
+	if err != nil {
+		server.log.Error("failed to configure TLS", zap.Error(err))
+		server.controlChan <- ServerControlFatalError
+		return false
+	}
+	server.log.Info("loaded TLS config")
+	return true
 }
 
 func (server *smtpServer) Name() string {

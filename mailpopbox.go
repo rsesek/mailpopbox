@@ -32,10 +32,17 @@ func main() {
 	pop3 := runPOP3Server(config, log)
 	smtp := runSMTPServer(config, log)
 
-	select {
-	case err := <-pop3:
-		fmt.Println(err)
-	case err := <-smtp:
-		fmt.Println(err)
+	for {
+		select {
+		case cm := <-pop3:
+			if cm == ServerControlRestart {
+				pop3 = runPOP3Server(config, log)
+			} else {
+				break
+			}
+		case <-smtp:
+			// smtp never reloads.
+			break
+		}
 	}
 }
