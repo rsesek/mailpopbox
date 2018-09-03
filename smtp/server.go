@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/mail"
+	"strings"
 	"time"
 )
 
@@ -24,6 +25,14 @@ var (
 	ReplyBadSequence = ReplyLine{503, "bad sequence of commands"}
 	ReplyBadMailbox  = ReplyLine{550, "mailbox unavailable"}
 )
+
+func DomainForAddress(addr mail.Address) string {
+	domainIdx := strings.LastIndex(addr.Address, "@")
+	if domainIdx == -1 {
+		return ""
+	}
+	return addr.Address[domainIdx+1:]
+}
 
 type Envelope struct {
 	RemoteAddr net.Addr

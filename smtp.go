@@ -7,7 +7,6 @@ import (
 	"net/mail"
 	"os"
 	"path"
-	"strings"
 
 	"github.com/uber-go/zap"
 
@@ -119,13 +118,7 @@ func (server *smtpServer) OnMessageDelivered(en smtp.Envelope) *smtp.ReplyLine {
 }
 
 func (server *smtpServer) maildropForAddress(addr mail.Address) string {
-	domainIdx := strings.LastIndex(addr.Address, "@")
-	if domainIdx == -1 {
-		return ""
-	}
-
-	domain := addr.Address[domainIdx+1:]
-
+	domain := smtp.DomainForAddress(addr)
 	for _, s := range server.config.Servers {
 		if domain == s.Domain {
 			return s.MaildropPath
