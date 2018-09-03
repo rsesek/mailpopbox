@@ -53,7 +53,6 @@ func WriteEnvelopeForDelivery(w io.Writer, e Envelope) {
 type Server interface {
 	Name() string
 	TLSConfig() *tls.Config
-	OnEHLO() *ReplyLine
 	VerifyAddress(mail.Address) ReplyLine
 	OnMessageDelivered(Envelope) *ReplyLine
 }
@@ -61,10 +60,6 @@ type Server interface {
 type EmptyServerCallbacks struct{}
 
 func (*EmptyServerCallbacks) TLSConfig() *tls.Config {
-	return nil
-}
-
-func (*EmptyServerCallbacks) OnEHLO() *ReplyLine {
 	return nil
 }
 
