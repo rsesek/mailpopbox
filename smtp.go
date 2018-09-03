@@ -95,10 +95,6 @@ func (server *smtpServer) VerifyAddress(addr mail.Address) smtp.ReplyLine {
 	return smtp.ReplyOK
 }
 
-func (server *smtpServer) OnEHLO() *smtp.ReplyLine {
-	return nil
-}
-
 func (server *smtpServer) OnMessageDelivered(en smtp.Envelope) *smtp.ReplyLine {
 	maildrop := server.maildropForAddress(en.RcptTo[0])
 	if maildrop == "" {
