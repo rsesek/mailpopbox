@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/mail"
@@ -58,10 +59,15 @@ func runServer(t *testing.T, server Server) net.Listener {
 type testServer struct {
 	EmptyServerCallbacks
 	blockList []string
+	tlsConfig *tls.Config
 }
 
 func (s *testServer) Name() string {
 	return "Test-Server"
+}
+
+func (s *testServer) TLSConfig() *tls.Config {
+	return s.tlsConfig
 }
 
 func (s *testServer) VerifyAddress(addr mail.Address) ReplyLine {
@@ -274,4 +280,51 @@ func TestGetReceivedInfo(t *testing.T) {
 		}
 	}
 
+}
+
+func getTLSConfig(t *testing.T) *tls.Config {
+	cert, err := tls.LoadX509KeyPair("../testtls/domain.crt", "../testtls/domain.key")
+	if err != nil {
+		t.Fatal(err)
+		return nil
+	}
+	return &tls.Config{
+		ServerName:         "localhost",
+		Certificates:       []tls.Certificate{cert},
+		InsecureSkipVerify: true,
+	}
+}
+
+func TestTLS(t *testing.T) {
+	l := runServer(t, &testServer{tlsConfig: getTLSConfig(t)})
+	defer l.Close()
+
+	nc, err := net.Dial(l.Addr().Network(), l.Addr().String())
+	ok(t, err)
+
+	conn := textproto.NewConn(nc)
+	readCodeLine(t, conn, 220)
+
+	ok(t, conn.PrintfLine("EHLO test-tls"))
+	_, resp, err := conn.ReadResponse(250)
+	ok(t, err)
+	if !strings.Contains(resp, "STARTTLS\n") {
+		t.Errorf("STARTTLS not advertised")
+	}
+
+	ok(t, conn.PrintfLine("STARTTLS"))
+	readCodeLine(t, conn, 220)
+
+	tc := tls.Client(nc, getTLSConfig(t))
+	err = tc.Handshake()
+	ok(t, err)
+
+	conn = textproto.NewConn(tc)
+
+	ok(t, conn.PrintfLine("EHLO test-tls-started"))
+	_, resp, err = conn.ReadResponse(250)
+	ok(t, err)
+	if strings.Contains(resp, "STARTTLS\n") {
+		t.Errorf("STARTTLS advertised when already started")
+	}
 }
