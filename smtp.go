@@ -95,6 +95,30 @@ func (server *smtpServer) VerifyAddress(addr mail.Address) smtp.ReplyLine {
 	return smtp.ReplyOK
 }
 
+func (server *smtpServer) Authenticate(authz, authc, passwd string) bool {
+	authcAddr, err := mail.ParseAddress(authc)
+	if err != nil {
+		return false
+	}
+
+	authzAddr, err := mail.ParseAddress(authz)
+	if authz != "" && err != nil {
+		return false
+	}
+
+	domain := smtp.DomainForAddress(*authcAddr)
+	for _, s := range server.config.Servers {
+		if domain == s.Domain {
+			authOk := authc == MailboxAccount+s.Domain && passwd == s.MailboxPassword
+			if authzAddr != nil {
+				authOk = authOk && smtp.DomainForAddress(*authzAddr) == domain
+			}
+			return authOk
+		}
+	}
+	return false
+}
+
 func (server *smtpServer) OnMessageDelivered(en smtp.Envelope) *smtp.ReplyLine {
 	maildrop := server.maildropForAddress(en.RcptTo[0])
 	if maildrop == "" {

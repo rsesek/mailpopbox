@@ -2,6 +2,7 @@ package smtp
 
 import (
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"net/mail"
@@ -56,10 +57,15 @@ func runServer(t *testing.T, server Server) net.Listener {
 	return l
 }
 
+type userAuth struct {
+	authz, authc, passwd string
+}
+
 type testServer struct {
 	EmptyServerCallbacks
 	blockList []string
 	tlsConfig *tls.Config
+	*userAuth
 }
 
 func (s *testServer) Name() string {
@@ -77,6 +83,12 @@ func (s *testServer) VerifyAddress(addr mail.Address) ReplyLine {
 		}
 	}
 	return ReplyOK
+}
+
+func (s *testServer) Authenticate(authz, authc, passwd string) bool {
+	return s.userAuth.authz == authz &&
+		s.userAuth.authc == authc &&
+		s.userAuth.passwd == passwd
 }
 
 func createClient(t *testing.T, addr net.Addr) *textproto.Conn {
@@ -295,11 +307,8 @@ func getTLSConfig(t *testing.T) *tls.Config {
 	}
 }
 
-func TestTLS(t *testing.T) {
-	l := runServer(t, &testServer{tlsConfig: getTLSConfig(t)})
-	defer l.Close()
-
-	nc, err := net.Dial(l.Addr().Network(), l.Addr().String())
+func setupTLSClient(t *testing.T, addr net.Addr) *textproto.Conn {
+	nc, err := net.Dial(addr.Network(), addr.String())
 	ok(t, err)
 
 	conn := textproto.NewConn(nc)
@@ -327,4 +336,62 @@ func TestTLS(t *testing.T) {
 	if strings.Contains(resp, "STARTTLS\n") {
 		t.Errorf("STARTTLS advertised when already started")
 	}
+
+	return conn
+}
+
+func TestTLS(t *testing.T) {
+	l := runServer(t, &testServer{tlsConfig: getTLSConfig(t)})
+	defer l.Close()
+
+	setupTLSClient(t, l.Addr())
+}
+
+func TestAuthWithoutTLS(t *testing.T) {
+	l := runServer(t, &testServer{})
+	defer l.Close()
+
+	conn := createClient(t, l.Addr())
+	readCodeLine(t, conn, 220)
+
+	ok(t, conn.PrintfLine("EHLO test"))
+	_, resp, err := conn.ReadResponse(250)
+	ok(t, err)
+
+	if strings.Contains(resp, "AUTH") {
+		t.Errorf("AUTH should not be advertised over plaintext")
+	}
+}
+
+func TestAuth(t *testing.T) {
+	l := runServer(t, &testServer{
+		tlsConfig: getTLSConfig(t),
+		userAuth: &userAuth{
+			authz:  "-authz-",
+			authc:  "-authc-",
+			passwd: "goats",
+		},
+	})
+	defer l.Close()
+
+	conn := setupTLSClient(t, l.Addr())
+
+	b64enc := func(s string) string {
+		return string(base64.StdEncoding.EncodeToString([]byte(s)))
+	}
+
+	runTableTest(t, conn, []requestResponse{
+		{"AUTH", 501, nil},
+		{"AUTH OAUTHBEARER", 504, nil},
+		{"AUTH PLAIN", 334, nil},
+		{b64enc("abc\x00def\x00ghf"), 535, nil},
+		{"AUTH PLAIN", 334, nil},
+		{b64enc("\x00"), 501, nil},
+		{"AUTH PLAIN", 334, nil},
+		{"this isn't base 64", 501, nil},
+		{"AUTH PLAIN", 334, nil},
+		{b64enc("-authz-\x00-authc-\x00goats"), 250, nil},
+		{"AUTH PLAIN", 503, nil}, // already authenticated
+		{"NOOP", 250, nil},
+	})
 }
