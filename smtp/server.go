@@ -54,6 +54,8 @@ type Server interface {
 	Name() string
 	TLSConfig() *tls.Config
 	VerifyAddress(mail.Address) ReplyLine
+	// Verify that the authc+passwd identity can send mail as authz.
+	Authenticate(authz, authc, passwd string) bool
 	OnMessageDelivered(Envelope) *ReplyLine
 }
 
@@ -65,6 +67,10 @@ func (*EmptyServerCallbacks) TLSConfig() *tls.Config {
 
 func (*EmptyServerCallbacks) VerifyAddress(mail.Address) ReplyLine {
 	return ReplyOK
+}
+
+func (*EmptyServerCallbacks) Authenticate(authz, authc, passwd string) bool {
+	return false
 }
 
 func (*EmptyServerCallbacks) OnMessageDelivered(Envelope) *ReplyLine {

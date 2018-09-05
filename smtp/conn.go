@@ -3,6 +3,7 @@ package smtp
 import (
 	"crypto/rand"
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"net/mail"
@@ -33,6 +34,10 @@ type connection struct {
 
 	esmtp bool
 	tls   *tls.ConnectionState
+
+	// The authcid from a PLAIN SASL login. Non-empty iff tls is non-nil and
+	// doAUTH() succeeded.
+	authc string
 
 	log zap.Logger
 
@@ -88,6 +93,8 @@ func AcceptConnection(netConn net.Conn, server Server, log zap.Logger) {
 			conn.doEHLO()
 		case "STARTTLS":
 			conn.doSTARTTLS()
+		case "AUTH":
+			conn.doAUTH()
 		case "MAIL":
 			conn.doMAIL()
 		case "RCPT":
@@ -165,6 +172,9 @@ func (conn *connection) doEHLO() {
 		if conn.server.TLSConfig() != nil && conn.tls == nil {
 			conn.tp.PrintfLine("250-STARTTLS")
 		}
+		if conn.tls != nil {
+			conn.tp.PrintfLine("250-AUTH PLAIN")
+		}
 		conn.tp.PrintfLine("250 SIZE %d", 40960000)
 	}
 
@@ -202,6 +212,64 @@ func (conn *connection) doSTARTTLS() {
 	conn.tls = &connState
 
 	conn.log.Info("TLS connection done", zap.String("state", conn.getTransportString()))
+}
+
+func (conn *connection) doAUTH() {
+	if conn.state != stateInitial || conn.tls == nil {
+		conn.reply(ReplyBadSequence)
+		return
+	}
+
+	if conn.authc != "" {
+		conn.writeReply(503, "already authenticated")
+		return
+	}
+
+	var cmd, authType string
+	_, err := fmt.Sscanf(conn.line, "%s %s", &cmd, &authType)
+	if err != nil {
+		conn.reply(ReplyBadSyntax)
+		return
+	}
+
+	if authType != "PLAIN" {
+		conn.writeReply(504, "unrecognized auth type")
+		return
+	}
+
+	conn.log.Info("doAUTH()")
+
+	conn.writeReply(334, " ")
+
+	authLine, err := conn.tp.ReadLine()
+	if err != nil {
+		conn.log.Error("failed to read auth line", zap.Error(err))
+		conn.reply(ReplyBadSyntax)
+		return
+	}
+
+	authBytes, err := base64.StdEncoding.DecodeString(authLine)
+	if err != nil {
+		conn.reply(ReplyBadSyntax)
+		return
+	}
+
+	authParts := strings.Split(string(authBytes), "\x00")
+	if len(authParts) != 3 {
+		conn.log.Error("bad auth line syntax")
+		conn.reply(ReplyBadSyntax)
+		return
+	}
+
+	if !conn.server.Authenticate(authParts[0], authParts[1], authParts[2]) {
+		conn.log.Error("failed to authenticate", zap.String("authc", authParts[1]))
+		conn.writeReply(535, "invalid credentials")
+		return
+	}
+
+	conn.log.Info("authenticated", zap.String("authz", authParts[0]), zap.String("authc", authParts[1]))
+	conn.authc = authParts[1]
+	conn.reply(ReplyOK)
 }
 
 func (conn *connection) doMAIL() {
