@@ -63,6 +63,7 @@ type userAuth struct {
 
 type testServer struct {
 	EmptyServerCallbacks
+	domain    string
 	blockList []string
 	tlsConfig *tls.Config
 	*userAuth
@@ -77,6 +78,9 @@ func (s *testServer) TLSConfig() *tls.Config {
 }
 
 func (s *testServer) VerifyAddress(addr mail.Address) ReplyLine {
+	if DomainForAddress(addr) != s.domain {
+		return ReplyBadMailbox
+	}
 	for _, block := range s.blockList {
 		if strings.ToLower(block) == addr.Address {
 			return ReplyBadMailbox
@@ -121,6 +125,7 @@ func runTableTest(t testing.TB, conn *textproto.Conn, seq []requestResponse) {
 // RFC 5321 § D.1
 func TestScenarioTypical(t *testing.T) {
 	s := testServer{
+		domain:    "foo.com",
 		blockList: []string{"Green@foo.com"},
 	}
 	l := runServer(t, &s)
@@ -168,6 +173,7 @@ func TestScenarioTypical(t *testing.T) {
 
 func TestVerifyAddress(t *testing.T) {
 	s := testServer{
+		domain:    "test.mail",
 		blockList: []string{"banned@test.mail"},
 	}
 	l := runServer(t, &s)
@@ -203,8 +209,10 @@ func TestBadAddress(t *testing.T) {
 }
 
 func TestCaseSensitivty(t *testing.T) {
-	s := &testServer{}
-	s.blockList = []string{"reject@mail.com"}
+	s := &testServer{
+		domain:    "mail.com",
+		blockList: []string{"reject@mail.com"},
+	}
 	l := runServer(t, s)
 	defer l.Close()
 
