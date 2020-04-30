@@ -28,9 +28,9 @@ func ok(t testing.TB, err error) {
 }
 
 func readCodeLine(t testing.TB, conn *textproto.Conn, code int) string {
-	_, message, err := conn.ReadCodeLine(code)
+	actual, message, err := conn.ReadCodeLine(code)
 	if err != nil {
-		t.Errorf("%s ReadCodeLine error: %v", _fl(1), err)
+		t.Errorf("%s ReadCodeLine error, expected %d, got %d: %v", _fl(1), code, actual, err)
 	}
 	return message
 }
@@ -496,18 +496,6 @@ func TestBasicRelay(t *testing.T) {
 	}
 }
 
-func TestNoInternalRelays(t *testing.T) {
-	_, l, conn := setupRelayTest(t)
-	defer l.Close()
-
-	runTableTest(t, conn, []requestResponse{
-		{"MAIL FROM:<mailbox@example.com>", 250, nil},
-		{"RCPT TO:<valid@dest.xyz>", 250, nil},
-		{"RCPT TO:<dest@example.com>", 550, nil},
-		{"RCPT TO:<mailbox@example.com>", 550, nil},
-	})
-}
-
 func TestSendAsRelay(t *testing.T) {
 	server, l, conn := setupRelayTest(t)
 	defer l.Close()
@@ -515,14 +503,12 @@ func TestSendAsRelay(t *testing.T) {
 	runTableTest(t, conn, []requestResponse{
 		{"MAIL FROM:<mailbox@example.com>", 250, nil},
 		{"RCPT TO:<valid@dest.xyz>", 250, nil},
-		{"RCPT TO:<sendas+source@example.com>", 250, nil},
-		{"RCPT TO:<mailbox@example.com>", 550, nil},
 		{"DATA", 354, func(t testing.TB, conn *textproto.Conn) {
 			readCodeLine(t, conn, 354)
 
 			ok(t, conn.PrintfLine("From: <mailbox@example.com>"))
 			ok(t, conn.PrintfLine("To: <valid@dest.xyz>"))
-			ok(t, conn.PrintfLine("Subject: Send-as relay\n"))
+			ok(t, conn.PrintfLine("Subject: Send-as relay [sendas:source]\n"))
 			ok(t, conn.PrintfLine("We've switched the senders!"))
 			ok(t, conn.PrintfLine("."))
 			readCodeLine(t, conn, 250)
@@ -557,6 +543,10 @@ func TestSendAsRelay(t *testing.T) {
 	if strings.Index(msg, "\nFrom: <source@example.com>\n") == -1 {
 		t.Errorf("Could not find From: header in message %q", msg)
 	}
+
+	if strings.Index(msg, "\nSubject: Send-as relay \n") == -1 {
+		t.Errorf("Could not find modified Subject: header in message %q", msg)
+	}
 }
 
 func TestSendMultipleRelay(t *testing.T) {
@@ -566,14 +556,13 @@ func TestSendMultipleRelay(t *testing.T) {
 	runTableTest(t, conn, []requestResponse{
 		{"MAIL FROM:<mailbox@example.com>", 250, nil},
 		{"RCPT TO:<valid@dest.xyz>", 250, nil},
-		{"RCPT TO:<sendas+source@example.com>", 250, nil},
 		{"RCPT TO:<another@dest.org>", 250, nil},
 		{"DATA", 354, func(t testing.TB, conn *textproto.Conn) {
 			readCodeLine(t, conn, 354)
 
 			ok(t, conn.PrintfLine("To: Cindy <valid@dest.xyz>, Sam <another@dest.org>"))
-			ok(t, conn.PrintfLine("From: <mailbox@example.com>"))
-			ok(t, conn.PrintfLine("Subject: Two destinations\n"))
+			ok(t, conn.PrintfLine("From: Finn <mailbox@example.com>"))
+			ok(t, conn.PrintfLine("Subject: Two destinations [sendas:source]\n"))
 			ok(t, conn.PrintfLine("And we've switched the senders!"))
 			ok(t, conn.PrintfLine("."))
 			readCodeLine(t, conn, 250)
@@ -605,7 +594,11 @@ func TestSendMultipleRelay(t *testing.T) {
 		t.Errorf("Should not find %q in message %q", original, msg)
 	}
 
-	if strings.Index(msg, "\nFrom: <source@example.com>\n") == -1 {
+	if strings.Index(msg, "\nFrom: Finn <source@example.com>\n") == -1 {
 		t.Errorf("Could not find From: header in message %q", msg)
+	}
+
+	if strings.Index(msg, "\nSubject: Two destinations \n") == -1 {
+		t.Errorf("Could not find modified Subject: header in message %q", msg)
 	}
 }
