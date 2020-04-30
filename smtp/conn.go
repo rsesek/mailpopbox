@@ -330,11 +330,7 @@ func (conn *connection) doMAIL() {
 	}
 
 	if conn.server.VerifyAddress(*conn.mailFrom) == ReplyOK {
-		// Message is being sent from a domain that this is an MTA for. Ultimate
-		// handling of the outbound message requires knowing the recipient.
-		domain := DomainForAddress(*conn.mailFrom)
-		// TODO: better way to authenticate this?
-		if !strings.HasSuffix(conn.authc, "@"+domain) {
+		if DomainForAddress(*conn.mailFrom) != DomainForAddressString(conn.authc) {
 			conn.writeReply(550, "not authenticated")
 			return
 		}
@@ -367,47 +363,12 @@ func (conn *connection) doRCPT() {
 		return
 	}
 
-	if reply := conn.server.VerifyAddress(*address); reply == ReplyOK {
-		// Message is addressed to this server. If it's outbound, only support
-		// the special send-as addressing.
-		if conn.delivery == deliverOutbound {
-			if !strings.HasPrefix(address.Address, SendAsAddress) {
-				conn.log.Error("internal relay addressing not supported",
-					zap.String("address", address.Address))
-				conn.reply(ReplyBadMailbox)
-				return
-			}
-			address.Address = strings.TrimPrefix(address.Address, SendAsAddress)
-			if DomainForAddress(*address) != DomainForAddressString(conn.authc) {
-				conn.log.Error("not authenticated for send-as",
-					zap.String("address", address.Address),
-					zap.String("authc", conn.authc))
-				conn.reply(ReplyBadMailbox)
-				return
-			}
-			if conn.sendAs != nil {
-				conn.log.Error("sendAs already specified",
-					zap.String("address", address.Address),
-					zap.String("sendAs", conn.sendAs.Address))
-				conn.reply(ReplyMailboxUnallowed)
-				return
-			}
-			conn.log.Info("doRCPT()",
-				zap.String("sendAs", address.Address))
-			conn.sendAs = address
-			conn.state = stateRecipient
-			conn.reply(ReplyOK)
-			return
-		}
-	} else {
-		// Message is not addressed to this server, so the delivery must be outbound.
-		if conn.delivery == deliverInbound {
-			conn.log.Warn("invalid address",
-				zap.String("address", address.Address),
-				zap.Stringer("reply", reply))
-			conn.reply(reply)
-			return
-		}
+	if reply := conn.server.VerifyAddress(*address); reply != ReplyOK && conn.delivery == deliverInbound {
+		conn.log.Warn("invalid address",
+			zap.String("address", address.Address),
+			zap.Stringer("reply", reply))
+		conn.reply(reply)
+		return
 	}
 
 	conn.log.Info("doRCPT()",
@@ -438,8 +399,6 @@ func (conn *connection) doDATA() {
 		return
 	}
 
-	conn.handleSendAs(&data)
-
 	received := time.Now()
 	env := Envelope{
 		RemoteAddr: conn.remoteAddr,
@@ -448,7 +407,10 @@ func (conn *connection) doDATA() {
 		RcptTo:     conn.rcptTo,
 		Received:   received,
 		ID:         conn.envelopeID(received),
+		Data:       data,
 	}
+
+	conn.handleSendAs(&env)
 
 	conn.log.Info("received message",
 		zap.Int("bytes", len(data)),
@@ -458,7 +420,7 @@ func (conn *connection) doDATA() {
 
 	trace := conn.getReceivedInfo(env)
 
-	env.Data = append(trace, data...)
+	env.Data = append(trace, env.Data...)
 
 	if conn.delivery == deliverInbound {
 		if reply := conn.server.OnMessageDelivered(env); reply != nil {
@@ -475,46 +437,71 @@ func (conn *connection) doDATA() {
 	conn.reply(ReplyOK)
 }
 
-func (conn *connection) handleSendAs(data *[]byte) {
-	if conn.delivery != deliverOutbound || conn.sendAs == nil {
+func (conn *connection) handleSendAs(env *Envelope) {
+	if conn.delivery != deliverOutbound {
 		return
 	}
 
-	conn.mailFrom = conn.sendAs
-
 	// Find the separator between the message header and body.
-	headerIdx := bytes.Index(*data, []byte("\n\n"))
+	headerIdx := bytes.Index(env.Data, []byte("\n\n"))
 	if headerIdx == -1 {
 		conn.log.Error("send-as: could not find headers index")
 		return
 	}
 
-	fromPrefix := []byte("From: ")
-	fromIdx := bytes.Index(*data, fromPrefix)
-	if fromIdx == -1 || fromIdx >= headerIdx {
-		conn.log.Error("send-as: could not find From header")
-		return
-	}
-	if fromIdx != 0 {
-		if (*data)[fromIdx-1] != '\n' {
-			conn.log.Error("send-as: could not find From header")
-			return
+	var buf bytes.Buffer
+
+	headers := bytes.SplitAfter(env.Data[:headerIdx], []byte("\n"))
+
+	var fromIdx, subjectIdx int
+	for i, header := range headers {
+		if bytes.HasPrefix(header, []byte("From:")) {
+			fromIdx = i
+			continue
+		}
+		if bytes.HasPrefix(header, []byte("Subject:")) {
+			subjectIdx = i
+			continue
 		}
 	}
 
-	fromEndIdx := bytes.IndexByte((*data)[fromIdx:], '\n')
-	if fromIdx == -1 {
-		conn.log.Error("send-as: could not find end of From header")
+	if subjectIdx == -1 {
+		conn.log.Error("send-as: could not find Subject header")
 		return
 	}
-	fromEndIdx += fromIdx
+	if fromIdx == -1 {
+		conn.log.Error("send-as: could not find From header")
+		return
+	}
 
-	newData := (*data)[:fromIdx]
-	newData = append(newData, fromPrefix...)
-	newData = append(newData, []byte(conn.sendAs.String())...)
-	newData = append(newData, (*data)[fromEndIdx:]...)
+	sendAs := SendAsSubject.FindSubmatchIndex(headers[subjectIdx])
+	if sendAs == nil {
+		// No send-as modification.
+		return
+	}
 
-	*data = newData
+	// Submatch 0 is the whole sendas magic. Submatch 1 is the address prefix.
+	sendAsUser := headers[subjectIdx][sendAs[2]:sendAs[3]]
+	sendAsAddress := string(sendAsUser) + "@" + DomainForAddressString(conn.authc)
+
+	for i, header := range headers {
+		if i == subjectIdx {
+			buf.Write(header[:sendAs[0]])
+			buf.Write(header[sendAs[1]:])
+		} else if i == fromIdx {
+			addressStart := bytes.LastIndexByte(header, byte('<'))
+			buf.Write(header[:addressStart+1])
+			buf.WriteString(sendAsAddress)
+			buf.WriteString(">\n")
+		} else {
+			buf.Write(header)
+		}
+	}
+
+	buf.Write(env.Data[headerIdx:])
+
+	env.Data = buf.Bytes()
+	env.MailFrom.Address = sendAsAddress
 }
 
 func (conn *connection) envelopeID(t time.Time) string {
@@ -545,7 +532,9 @@ func (conn *connection) getReceivedInfo(envelope Envelope) []byte {
 	}
 	base += fmt.Sprintf("by %s (mailpopbox) with %s id %s\r\n        ", conn.server.Name(), with, envelope.ID)
 
-	base += fmt.Sprintf("for <%s>\r\n        ", envelope.RcptTo[0].Address)
+	if len(envelope.RcptTo) > 0 {
+		base += fmt.Sprintf("for <%s>\r\n        ", envelope.RcptTo[0].Address)
+	}
 
 	transport := conn.getTransportString()
 	date := envelope.Received.Format(time.RFC1123Z) // Same as RFC 5322 § 3.3

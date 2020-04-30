@@ -2,6 +2,7 @@ package smtp
 
 import (
 	"crypto/tls"
+	"regexp"
 	"fmt"
 	"io"
 	"net"
@@ -19,7 +20,7 @@ func (l ReplyLine) String() string {
 	return fmt.Sprintf("%d %s", l.Code, l.Message)
 }
 
-const SendAsAddress = "sendas+"
+var SendAsSubject = regexp.MustCompile(`(?i)\[sendas:\s*([a-zA-Z0-9\.\-_]+)\]`)
 
 var (
 	ReplyOK               = ReplyLine{250, "OK"}
