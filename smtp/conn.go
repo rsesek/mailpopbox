@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/base64"
@@ -24,6 +25,26 @@ const (
 	stateData
 )
 
+type delivery int
+
+func (d delivery) String() string {
+	switch d {
+	case deliverUnknown:
+		return "unknown"
+	case deliverInbound:
+		return "inbound"
+	case deliverOutbound:
+		return "outbound"
+	}
+	panic("Unknown delivery")
+}
+
+const (
+	deliverUnknown  delivery = iota
+	deliverInbound           // Mail is not from one of this server's domains.
+	deliverOutbound          // Mail IS from one of this server's domains.
+)
+
 type connection struct {
 	server Server
 
@@ -43,6 +64,10 @@ type connection struct {
 
 	state
 	line string
+
+	delivery
+	// For deliverOutbound, replaces the From and Reply-To values.
+	sendAs *mail.Address
 
 	ehlo     string
 	mailFrom *mail.Address
@@ -291,6 +316,20 @@ func (conn *connection) doMAIL() {
 		return
 	}
 
+	if conn.server.VerifyAddress(*conn.mailFrom) == ReplyOK {
+		// Message is being sent from a domain that this is an MTA for. Ultimate
+		// handling of the outbound message requires knowing the recipient.
+		domain := DomainForAddress(*conn.mailFrom)
+		// TODO: better way to authenticate this?
+		if !strings.HasSuffix(conn.authc, "@"+domain) {
+			conn.writeReply(550, "not authenticated")
+			return
+		}
+		conn.delivery = deliverOutbound
+	} else {
+		conn.delivery = deliverInbound
+	}
+
 	conn.log.Info("doMAIL()", zap.String("address", conn.mailFrom.Address))
 
 	conn.state = stateMail
@@ -315,15 +354,52 @@ func (conn *connection) doRCPT() {
 		return
 	}
 
-	if reply := conn.server.VerifyAddress(*address); reply != ReplyOK {
-		conn.log.Warn("invalid address",
-			zap.String("address", address.Address),
-			zap.Stringer("reply", reply))
-		conn.reply(reply)
-		return
+	if reply := conn.server.VerifyAddress(*address); reply == ReplyOK {
+		// Message is addressed to this server. If it's outbound, only support
+		// the special send-as addressing.
+		if conn.delivery == deliverOutbound {
+			if !strings.HasPrefix(address.Address, SendAsAddress) {
+				conn.log.Error("internal relay addressing not supported",
+					zap.String("address", address.Address))
+				conn.reply(ReplyBadMailbox)
+				return
+			}
+			address.Address = strings.TrimPrefix(address.Address, SendAsAddress)
+			if DomainForAddress(*address) != DomainForAddressString(conn.authc) {
+				conn.log.Error("not authenticated for send-as",
+					zap.String("address", address.Address),
+					zap.String("authc", conn.authc))
+				conn.reply(ReplyBadMailbox)
+				return
+			}
+			if conn.sendAs != nil {
+				conn.log.Error("sendAs already specified",
+					zap.String("address", address.Address),
+					zap.String("sendAs", conn.sendAs.Address))
+				conn.reply(ReplyMailboxUnallowed)
+				return
+			}
+			conn.log.Info("doRCPT()",
+				zap.String("sendAs", address.Address))
+			conn.sendAs = address
+			conn.state = stateRecipient
+			conn.reply(ReplyOK)
+			return
+		}
+	} else {
+		// Message is not addressed to this server, so the delivery must be outbound.
+		if conn.delivery == deliverInbound {
+			conn.log.Warn("invalid address",
+				zap.String("address", address.Address),
+				zap.Stringer("reply", reply))
+			conn.reply(reply)
+			return
+		}
 	}
 
-	conn.log.Info("doRCPT()", zap.String("address", address.Address))
+	conn.log.Info("doRCPT()",
+		zap.String("address", address.Address),
+		zap.String("delivery", conn.delivery.String()))
 
 	conn.rcptTo = append(conn.rcptTo, *address)
 
@@ -349,6 +425,8 @@ func (conn *connection) doDATA() {
 		return
 	}
 
+	conn.handleSendAs(&data)
+
 	received := time.Now()
 	env := Envelope{
 		RemoteAddr: conn.remoteAddr,
@@ -362,20 +440,68 @@ func (conn *connection) doDATA() {
 	conn.log.Info("received message",
 		zap.Int("bytes", len(data)),
 		zap.Time("date", received),
-		zap.String("id", env.ID))
+		zap.String("id", env.ID),
+		zap.String("delivery", conn.delivery.String()))
 
 	trace := conn.getReceivedInfo(env)
 
 	env.Data = append(trace, data...)
 
-	if reply := conn.server.OnMessageDelivered(env); reply != nil {
-		conn.log.Warn("message was rejected", zap.String("id", env.ID))
-		conn.reply(*reply)
-		return
+	if conn.delivery == deliverInbound {
+		if reply := conn.server.OnMessageDelivered(env); reply != nil {
+			conn.log.Warn("message was rejected", zap.String("id", env.ID))
+			conn.reply(*reply)
+			return
+		}
+	} else if conn.delivery == deliverOutbound {
+		conn.server.RelayMessage(env)
 	}
 
 	conn.state = stateInitial
+	conn.resetBuffers()
 	conn.reply(ReplyOK)
+}
+
+func (conn *connection) handleSendAs(data *[]byte) {
+	if conn.delivery != deliverOutbound || conn.sendAs == nil {
+		return
+	}
+
+	conn.mailFrom = conn.sendAs
+
+	// Find the separator between the message header and body.
+	headerIdx := bytes.Index(*data, []byte("\n\n"))
+	if headerIdx == -1 {
+		conn.log.Error("send-as: could not find headers index")
+		return
+	}
+
+	fromPrefix := []byte("From: ")
+	fromIdx := bytes.Index(*data, fromPrefix)
+	if fromIdx == -1 || fromIdx >= headerIdx {
+		conn.log.Error("send-as: could not find From header")
+		return
+	}
+	if fromIdx != 0 {
+		if (*data)[fromIdx-1] != '\n' {
+			conn.log.Error("send-as: could not find From header")
+			return
+		}
+	}
+
+	fromEndIdx := bytes.IndexByte((*data)[fromIdx:], '\n')
+	if fromIdx == -1 {
+		conn.log.Error("send-as: could not find end of From header")
+		return
+	}
+	fromEndIdx += fromIdx
+
+	newData := (*data)[:fromIdx]
+	newData = append(newData, fromPrefix...)
+	newData = append(newData, []byte(conn.sendAs.String())...)
+	newData = append(newData, (*data)[fromEndIdx:]...)
+
+	*data = newData
 }
 
 func (conn *connection) envelopeID(t time.Time) string {
@@ -474,6 +600,8 @@ func (conn *connection) doRSET() {
 }
 
 func (conn *connection) resetBuffers() {
+	conn.delivery = deliverUnknown
+	conn.sendAs = nil
 	conn.mailFrom = nil
 	conn.rcptTo = make([]mail.Address, 0)
 }

@@ -19,19 +19,26 @@ func (l ReplyLine) String() string {
 	return fmt.Sprintf("%d %s", l.Code, l.Message)
 }
 
+const SendAsAddress = "sendas+"
+
 var (
-	ReplyOK          = ReplyLine{250, "OK"}
-	ReplyBadSyntax   = ReplyLine{501, "syntax error"}
-	ReplyBadSequence = ReplyLine{503, "bad sequence of commands"}
-	ReplyBadMailbox  = ReplyLine{550, "mailbox unavailable"}
+	ReplyOK               = ReplyLine{250, "OK"}
+	ReplyBadSyntax        = ReplyLine{501, "syntax error"}
+	ReplyBadSequence      = ReplyLine{503, "bad sequence of commands"}
+	ReplyBadMailbox       = ReplyLine{550, "mailbox unavailable"}
+	ReplyMailboxUnallowed = ReplyLine{553, "mailbox name not allowed"}
 )
 
 func DomainForAddress(addr mail.Address) string {
-	domainIdx := strings.LastIndex(addr.Address, "@")
+	return DomainForAddressString(addr.Address)
+}
+
+func DomainForAddressString(address string) string {
+	domainIdx := strings.LastIndex(address, "@")
 	if domainIdx == -1 {
 		return ""
 	}
-	return addr.Address[domainIdx+1:]
+	return address[domainIdx+1:]
 }
 
 type Envelope struct {
@@ -57,6 +64,10 @@ type Server interface {
 	// Verify that the authc+passwd identity can send mail as authz.
 	Authenticate(authz, authc, passwd string) bool
 	OnMessageDelivered(Envelope) *ReplyLine
+
+	// RelayMessage instructs the server to send the Envelope to another
+	// MTA for outbound delivery.
+	RelayMessage(Envelope)
 }
 
 type EmptyServerCallbacks struct{}
@@ -75,4 +86,7 @@ func (*EmptyServerCallbacks) Authenticate(authz, authc, passwd string) bool {
 
 func (*EmptyServerCallbacks) OnMessageDelivered(Envelope) *ReplyLine {
 	return nil
+}
+
+func (*EmptyServerCallbacks) RelayMessage(Envelope) {
 }
