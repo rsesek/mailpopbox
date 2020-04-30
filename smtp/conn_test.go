@@ -117,12 +117,14 @@ type requestResponse struct {
 
 func runTableTest(t testing.TB, conn *textproto.Conn, seq []requestResponse) {
 	for i, rr := range seq {
-		t.Logf("%s case %d", _fl(1), i)
 		ok(t, conn.PrintfLine(rr.request))
 		if rr.handler != nil {
 			rr.handler(t, conn)
 		} else {
 			readCodeLine(t, conn, rr.responseCode)
+		}
+		if t.Failed() {
+			t.Logf("%s case %d", _fl(1), i)
 		}
 	}
 }
@@ -396,16 +398,35 @@ func TestAuth(t *testing.T) {
 	runTableTest(t, conn, []requestResponse{
 		{"AUTH", 501, nil},
 		{"AUTH OAUTHBEARER", 504, nil},
-		{"AUTH PLAIN", 334, nil},
+		{"AUTH PLAIN", 501, nil}, // Bad syntax, missing space.
+		{"AUTH PLAIN ", 334, nil},
 		{b64enc("abc\x00def\x00ghf"), 535, nil},
-		{"AUTH PLAIN", 334, nil},
+		{"AUTH PLAIN ", 334, nil},
 		{b64enc("\x00"), 501, nil},
-		{"AUTH PLAIN", 334, nil},
+		{"AUTH PLAIN ", 334, nil},
 		{"this isn't base 64", 501, nil},
-		{"AUTH PLAIN", 334, nil},
+		{"AUTH PLAIN ", 334, nil},
 		{b64enc("-authz-\x00-authc-\x00goats"), 250, nil},
-		{"AUTH PLAIN", 503, nil}, // already authenticated
+		{"AUTH PLAIN ", 503, nil}, // Already authenticated.
 		{"NOOP", 250, nil},
+	})
+}
+
+func TestAuthNoInitialResponse(t *testing.T) {
+	l := runServer(t, &testServer{
+		tlsConfig: getTLSConfig(t),
+		userAuth: &userAuth{
+			authz:  "",
+			authc:  "user",
+			passwd: "longpassword",
+		},
+	})
+	defer l.Close()
+
+	conn := setupTLSClient(t, l.Addr())
+
+	runTableTest(t, conn, []requestResponse{
+		{"AUTH PLAIN " + b64enc("\x00user\x00longpassword"), 250, nil},
 	})
 }
 
@@ -426,7 +447,7 @@ func TestRelayRequiresAuth(t *testing.T) {
 	runTableTest(t, conn, []requestResponse{
 		{"MAIL FROM:<apples@example.com>", 550, nil},
 		{"MAIL FROM:<mailbox@example.com>", 550, nil},
-		{"AUTH PLAIN", 334, nil},
+		{"AUTH PLAIN ", 334, nil},
 		{b64enc("\x00mailbox@example.com\x00test"), 250, nil},
 		{"MAIL FROM:<mailbox@example.com>", 250, nil},
 	})
@@ -445,7 +466,7 @@ func setupRelayTest(t *testing.T) (server *testServer, l net.Listener, conn *tex
 	l = runServer(t, server)
 	conn = setupTLSClient(t, l.Addr())
 	runTableTest(t, conn, []requestResponse{
-		{"AUTH PLAIN", 334, nil},
+		{"AUTH PLAIN ", 334, nil},
 		{b64enc("\x00mailbox@example.com\x00test"), 250, nil},
 	})
 	return
@@ -509,7 +530,7 @@ func TestSendAsRelay(t *testing.T) {
 	})
 
 	if len(server.relayed) != 1 {
-		t.Errorf("Expected 1 relayed message, got %d", len(server.relayed))
+		t.Fatalf("Expected 1 relayed message, got %d", len(server.relayed))
 	}
 
 	replaced := "source@example.com"
@@ -560,7 +581,7 @@ func TestSendMultipleRelay(t *testing.T) {
 	})
 
 	if len(server.relayed) != 1 {
-		t.Errorf("Expected 1 relayed message, got %d", len(server.relayed))
+		t.Fatalf("Expected 1 relayed message, got %d", len(server.relayed))
 	}
 
 	replaced := "source@example.com"

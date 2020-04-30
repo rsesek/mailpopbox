@@ -97,7 +97,12 @@ func AcceptConnection(netConn net.Conn, server Server, log zap.Logger) {
 			return
 		}
 
-		conn.log.Info("ReadLine()", zap.String("line", conn.line))
+		lineForLog := conn.line
+		const authPlain = "AUTH PLAIN "
+		if strings.HasPrefix(conn.line, authPlain) {
+			lineForLog = authPlain + "[redacted]"
+		}
+		conn.log.Info("ReadLine()", zap.String("line", lineForLog))
 
 		var cmd string
 		if _, err = fmt.Sscanf(conn.line, "%s", &cmd); err != nil {
@@ -250,9 +255,9 @@ func (conn *connection) doAUTH() {
 		return
 	}
 
-	var cmd, authType string
-	_, err := fmt.Sscanf(conn.line, "%s %s", &cmd, &authType)
-	if err != nil {
+	var cmd, authType, authString string
+	n, err := fmt.Sscanf(conn.line, "%s %s %s", &cmd, &authType, &authString)
+	if n < 2 {
 		conn.reply(ReplyBadSyntax)
 		return
 	}
@@ -262,18 +267,26 @@ func (conn *connection) doAUTH() {
 		return
 	}
 
-	conn.log.Info("doAUTH()")
-
-	conn.writeReply(334, " ")
-
-	authLine, err := conn.tp.ReadLine()
-	if err != nil {
-		conn.log.Error("failed to read auth line", zap.Error(err))
+	// If only 2 tokens were scanned, then an initial response was not provided.
+	if n == 2 && conn.line[len(conn.line)-1] != ' ' {
 		conn.reply(ReplyBadSyntax)
 		return
 	}
 
-	authBytes, err := base64.StdEncoding.DecodeString(authLine)
+	conn.log.Info("doAUTH()")
+
+	if authString == "" {
+		conn.writeReply(334, " ")
+
+		authString, err = conn.tp.ReadLine()
+		if err != nil {
+			conn.log.Error("failed to read auth line", zap.Error(err))
+			conn.reply(ReplyBadSyntax)
+			return
+		}
+	}
+
+	authBytes, err := base64.StdEncoding.DecodeString(authString)
 	if err != nil {
 		conn.reply(ReplyBadSyntax)
 		return
