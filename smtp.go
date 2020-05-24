@@ -139,7 +139,7 @@ func (server *smtpServer) OnMessageDelivered(en smtp.Envelope) *smtp.ReplyLine {
 
 func (server *smtpServer) RelayMessage(en smtp.Envelope) {
 	log := server.log.With(zap.String("id", en.ID))
-	go smtp.RelayMessage(en, log)
+	go smtp.RelayMessage(server, en, log)
 }
 
 func (server *smtpServer) maildropForAddress(addr mail.Address) string {
