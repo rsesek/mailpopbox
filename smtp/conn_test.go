@@ -54,7 +54,7 @@ func runServer(t *testing.T, server Server) net.Listener {
 			if err != nil {
 				return
 			}
-			go AcceptConnection(conn, server, zap.New(zap.NullEncoder()))
+			go AcceptConnection(conn, server, zap.NewNop())
 		}
 	}()
 
