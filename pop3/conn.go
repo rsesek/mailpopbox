@@ -13,7 +13,7 @@ import (
 	"net/textproto"
 	"strings"
 
-	"github.com/uber-go/zap"
+	"go.uber.org/zap"
 )
 
 type state int
@@ -38,7 +38,7 @@ type connection struct {
 	tp         *textproto.Conn
 	remoteAddr net.Addr
 
-	log zap.Logger
+	log *zap.Logger
 
 	state
 	line string
@@ -46,7 +46,7 @@ type connection struct {
 	user string
 }
 
-func AcceptConnection(netConn net.Conn, po PostOffice, log zap.Logger) {
+func AcceptConnection(netConn net.Conn, po PostOffice, log *zap.Logger) {
 	log = log.With(zap.Stringer("client", netConn.RemoteAddr()))
 	conn := connection{
 		po:    po,

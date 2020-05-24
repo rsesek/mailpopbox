@@ -12,7 +12,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/uber-go/zap"
+	"go.uber.org/zap"
 )
 
 type ServerControlMessage int
@@ -22,7 +22,7 @@ const (
 	ServerControlRestart
 )
 
-func RunAcceptLoop(l net.Listener, c chan<- net.Conn, log zap.Logger) {
+func RunAcceptLoop(l net.Listener, c chan<- net.Conn, log *zap.Logger) {
 	for {
 		conn, err := l.Accept()
 		if err != nil {

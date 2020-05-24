@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/uber-go/zap"
+	"go.uber.org/zap"
 )
 
 type state int
@@ -40,7 +40,7 @@ type connection struct {
 	esmtp bool
 	tls   *tls.ConnectionState
 
-	log zap.Logger
+	log *zap.Logger
 
 	state
 	line string
@@ -50,7 +50,7 @@ type connection struct {
 	rcptTo   []mail.Address
 }
 
-func AcceptConnection(netConn net.Conn, server Server, log zap.Logger) {
+func AcceptConnection(netConn net.Conn, server Server, log *zap.Logger) {
 	conn := connection{
 		server:     server,
 		tp:         textproto.NewConn(netConn),

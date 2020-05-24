@@ -16,12 +16,12 @@ import (
 	"os"
 	"path"
 
-	"github.com/uber-go/zap"
+	"go.uber.org/zap"
 
 	"src.bluestatic.org/mailpopbox/pop3"
 )
 
-func runPOP3Server(config Config, log zap.Logger) <-chan ServerControlMessage {
+func runPOP3Server(config Config, log *zap.Logger) <-chan ServerControlMessage {
 	server := pop3Server{
 		config:      config,
 		controlChan: make(chan ServerControlMessage),
@@ -34,7 +34,7 @@ func runPOP3Server(config Config, log zap.Logger) <-chan ServerControlMessage {
 type pop3Server struct {
 	config      Config
 	controlChan chan ServerControlMessage
-	log         zap.Logger
+	log         *zap.Logger
 }
 
 func (server *pop3Server) run() {

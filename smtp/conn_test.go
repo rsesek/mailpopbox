@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/uber-go/zap"
+	"go.uber.org/zap"
 )
 
 func _fl(depth int) string {

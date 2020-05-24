@@ -15,12 +15,12 @@ import (
 	"path"
 	"strings"
 
-	"github.com/uber-go/zap"
+	"go.uber.org/zap"
 
 	"src.bluestatic.org/mailpopbox/smtp"
 )
 
-func runSMTPServer(config Config, log zap.Logger) <-chan ServerControlMessage {
+func runSMTPServer(config Config, log *zap.Logger) <-chan ServerControlMessage {
 	server := smtpServer{
 		config:      config,
 		controlChan: make(chan ServerControlMessage),
@@ -34,7 +34,7 @@ type smtpServer struct {
 	config    Config
 	tlsConfig *tls.Config
 
-	log zap.Logger
+	log *zap.Logger
 
 	controlChan chan ServerControlMessage
 }
