@@ -12,6 +12,8 @@ ExecStopPost=/sbin/iptables -t nat -D PREROUTING -p tcp --dport 25 -j REDIRECT -
 PermissionsStartOnly=true
 User=mailpopbox
 Group=mailpopbox
+OOMScoreAdjust=-1000
+OOMPolicy=continue
 
 [Install]
 WantedBy=multi-user.target

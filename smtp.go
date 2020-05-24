@@ -1,3 +1,9 @@
+// mailpopbox
+// Copyright 2020 Blue Static <https://www.bluestatic.org>
+// This program is free software licensed under the GNU General Public License,
+// version 3.0. The full text of the license can be found in LICENSE.txt.
+// SPDX-License-Identifier: GPL-3.0-only
+
 package main
 
 import (
@@ -8,12 +14,12 @@ import (
 	"os"
 	"path"
 
-	"github.com/uber-go/zap"
+	"go.uber.org/zap"
 
 	"src.bluestatic.org/mailpopbox/smtp"
 )
 
-func runSMTPServer(config Config, log zap.Logger) <-chan ServerControlMessage {
+func runSMTPServer(config Config, log *zap.Logger) <-chan ServerControlMessage {
 	server := smtpServer{
 		config:      config,
 		controlChan: make(chan ServerControlMessage),
@@ -27,7 +33,7 @@ type smtpServer struct {
 	config    Config
 	tlsConfig *tls.Config
 
-	log zap.Logger
+	log *zap.Logger
 
 	controlChan chan ServerControlMessage
 }

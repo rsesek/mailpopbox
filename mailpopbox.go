@@ -1,3 +1,9 @@
+// mailpopbox
+// Copyright 2020 Blue Static <https://www.bluestatic.org>
+// This program is free software licensed under the GNU General Public License,
+// version 3.0. The full text of the license can be found in LICENSE.txt.
+// SPDX-License-Identifier: GPL-3.0-only
+
 package main
 
 import (
@@ -5,7 +11,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/uber-go/zap"
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -27,7 +33,15 @@ func main() {
 	}
 	configFile.Close()
 
-	log := zap.New(zap.NewTextEncoder())
+	logConfig := zap.NewDevelopmentConfig()
+	logConfig.Development = false
+	logConfig.DisableStacktrace = true
+	logConfig.Level.SetLevel(zap.DebugLevel)
+	log, err := logConfig.Build()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "create logger: %v\n", err)
+		os.Exit(4)
+	}
 
 	pop3 := runPOP3Server(config, log)
 	smtp := runSMTPServer(config, log)
