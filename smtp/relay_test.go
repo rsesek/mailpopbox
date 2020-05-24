@@ -11,7 +11,7 @@ import (
 	"net/mail"
 	"testing"
 
-	"github.com/uber-go/zap"
+	"go.uber.org/zap"
 )
 
 type deliveryServer struct {
@@ -38,7 +38,7 @@ func TestRelayRoundTrip(t *testing.T) {
 		ID:       "ididid",
 	}
 
-	relayMessageToHost(s, env, zap.New(zap.NullEncoder()), env.RcptTo[0].Address, l.Addr().String())
+	relayMessageToHost(s, env, zap.NewNop(), env.RcptTo[0].Address, l.Addr().String())
 
 	if len(s.messages) != 1 {
 		t.Errorf("Expected 1 message to be delivered, got %d", len(s.messages))

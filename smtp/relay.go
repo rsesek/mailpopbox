@@ -11,10 +11,10 @@ import (
 	"net"
 	"net/smtp"
 
-	"github.com/uber-go/zap"
+	"go.uber.org/zap"
 )
 
-func RelayMessage(server Server, env Envelope, log zap.Logger) {
+func RelayMessage(server Server, env Envelope, log *zap.Logger) {
 	for _, rcptTo := range env.RcptTo {
 		sendLog := log.With(zap.String("address", rcptTo.Address))
 
@@ -31,7 +31,7 @@ func RelayMessage(server Server, env Envelope, log zap.Logger) {
 	}
 }
 
-func relayMessageToHost(server Server, env Envelope, log zap.Logger, to, host string) {
+func relayMessageToHost(server Server, env Envelope, log *zap.Logger, to, host string) {
 	from := env.MailFrom.Address
 
 	c, err := smtp.Dial(host)
