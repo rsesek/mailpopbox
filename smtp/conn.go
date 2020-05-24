@@ -1,3 +1,9 @@
+// mailpopbox
+// Copyright 2020 Blue Static <https://www.bluestatic.org>
+// This program is free software licensed under the GNU General Public License,
+// version 3.0. The full text of the license can be found in LICENSE.txt.
+// SPDX-License-Identifier: GPL-3.0-only
+
 package smtp
 
 import (
@@ -12,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/uber-go/zap"
+	"go.uber.org/zap"
 )
 
 type state int
@@ -56,11 +62,11 @@ type connection struct {
 	esmtp bool
 	tls   *tls.ConnectionState
 
+	log *zap.Logger
+
 	// The authcid from a PLAIN SASL login. Non-empty iff tls is non-nil and
 	// doAUTH() succeeded.
 	authc string
-
-	log zap.Logger
 
 	state
 	line string
@@ -74,7 +80,7 @@ type connection struct {
 	rcptTo   []mail.Address
 }
 
-func AcceptConnection(netConn net.Conn, server Server, log zap.Logger) {
+func AcceptConnection(netConn net.Conn, server Server, log *zap.Logger) {
 	conn := connection{
 		server:     server,
 		tp:         textproto.NewConn(netConn),

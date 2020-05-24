@@ -1,6 +1,0 @@
-[submodule "vendor/uber-go/zap"]
-	path = vendor/github.com/uber-go/zap
-	url = https://github.com/uber-go/zap
-[submodule "vendor/github.com/uber-go/atomic"]
-	path = vendor/github.com/uber-go/atomic
-	url = https://github.com/uber-go/atomic

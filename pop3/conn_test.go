@@ -1,3 +1,9 @@
+// mailpopbox
+// Copyright 2020 Blue Static <https://www.bluestatic.org>
+// This program is free software licensed under the GNU General Public License,
+// version 3.0. The full text of the license can be found in LICENSE.txt.
+// SPDX-License-Identifier: GPL-3.0-only
+
 package pop3
 
 import (
@@ -13,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/uber-go/zap"
+	"go.uber.org/zap"
 )
 
 func _fl(depth int) string {
@@ -62,7 +68,7 @@ func runServer(t *testing.T, po PostOffice) net.Listener {
 			if err != nil {
 				return
 			}
-			go AcceptConnection(conn, po, zap.New(zap.NullEncoder()))
+			go AcceptConnection(conn, po, zap.NewNop())
 		}
 	}()
 	return l
