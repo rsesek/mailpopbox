@@ -169,7 +169,7 @@ func TestDeliveryFailureMessage(t *testing.T) {
 		return
 	}
 
-	expected = "delivery-status"
+	expected = "message/delivery-status"
 	if part.Header["Content-Type"][0] != expected {
 		t.Errorf("Part 1 type expected %q, got %q", expected, part.Header["Content-Type"][0])
 	}
