@@ -8,7 +8,6 @@ package smtp
 
 import (
 	"bytes"
-	"crypto/rand"
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
@@ -412,7 +411,7 @@ func (conn *connection) doDATA() {
 		MailFrom:   *conn.mailFrom,
 		RcptTo:     conn.rcptTo,
 		Received:   received,
-		ID:         conn.envelopeID(received),
+		ID:         generateEnvelopeId("m", received),
 		Data:       data,
 	}
 
@@ -508,12 +507,6 @@ func (conn *connection) handleSendAs(env *Envelope) {
 
 	env.Data = buf.Bytes()
 	env.MailFrom.Address = sendAsAddress
-}
-
-func (conn *connection) envelopeID(t time.Time) string {
-	var idBytes [4]byte
-	rand.Read(idBytes[:])
-	return fmt.Sprintf("m.%d.%x", t.UnixNano(), idBytes)
 }
 
 func (conn *connection) getReceivedInfo(envelope Envelope) []byte {
