@@ -30,16 +30,16 @@ func RelayMessage(server Server, env Envelope, log *zap.Logger) {
 			deliverRelayFailure(server, env, log, rcptTo.Address, "failed to lookup MX records", err)
 			return
 		}
-		host := mx[0].Host + ":25"
-		relayMessageToHost(server, env, sendLog, rcptTo.Address, host)
+		relayMessageToHost(server, env, sendLog, rcptTo.Address, mx[0].Host, "25")
 	}
 }
 
-func relayMessageToHost(server Server, env Envelope, log *zap.Logger, to, host string) {
+func relayMessageToHost(server Server, env Envelope, log *zap.Logger, to, host, port string) {
 	from := env.MailFrom.Address
-	log = log.With(zap.String("host", host))
+	hostPort := net.JoinHostPort(host, port)
+	log = log.With(zap.String("host", hostPort))
 
-	c, err := smtp.Dial(host)
+	c, err := smtp.Dial(hostPort)
 	if err != nil {
 		// TODO - retry, or look at other MX records
 		deliverRelayFailure(server, env, log, to, "failed to dial host", err)

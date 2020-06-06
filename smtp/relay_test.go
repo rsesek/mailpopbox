@@ -44,7 +44,8 @@ func TestRelayRoundTrip(t *testing.T) {
 		ID:       "ididid",
 	}
 
-	relayMessageToHost(s, env, zap.NewNop(), env.RcptTo[0].Address, l.Addr().String())
+	host, port, _ := net.SplitHostPort(l.Addr().String())
+	relayMessageToHost(s, env, zap.NewNop(), env.RcptTo[0].Address, host, port)
 
 	if len(s.messages) != 1 {
 		t.Errorf("Expected 1 message to be delivered, got %d", len(s.messages))
