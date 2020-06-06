@@ -127,7 +127,7 @@ func deliverRelayFailure(server Server, env Envelope, log *zap.Logger, to, error
 	fmt.Fprintf(tw, "The server failed to relay the message:\n\n%s:\n%s\n", errorStr, sendErr.Error())
 
 	sw, err := mw.CreatePart(textproto.MIMEHeader{
-		"Content-Type": []string{"delivery-status"},
+		"Content-Type": []string{"message/delivery-status"},
 	})
 	if err != nil {
 		log.Error("failed to create multipart 1", zap.Error(err))
