@@ -136,11 +136,7 @@ func deliverRelayFailure(server Server, env Envelope, log *zap.Logger, to, error
 	fmt.Fprintf(sw, "Original-Envelope-ID: %s\n", env.ID)
 	fmt.Fprintf(sw, "Reporting-UA: %s\n", env.EHLO)
 	if env.RemoteAddr != nil {
-		rhosts, err := net.LookupAddr(env.RemoteAddr.String())
-		if err == nil {
-			fmt.Fprintf(sw, "Reporting-MTA: %s\n", rhosts[0])
-		}
-		fmt.Fprintf(sw, "X-Remote-Address: %s\n", env.RemoteAddr)
+		fmt.Fprintf(sw, "Reporting-MTA: dns; %s\n", lookupRemoteHost(env.RemoteAddr))
 	}
 	fmt.Fprintf(sw, "Date: %s\n", env.Received.Format(time.RFC1123Z))
 

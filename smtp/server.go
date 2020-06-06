@@ -71,6 +71,23 @@ func generateEnvelopeId(prefix string, t time.Time) string {
 	return fmt.Sprintf("%s.%d.%x", prefix, t.UnixNano(), idBytes)
 }
 
+// lookupRemoteHost attempts to reverse look-up the provided IP address. On
+// success, it returns the hostname and the IP as formatted for a receive
+// trace. If the lookup fails, it just returns the original IP.
+func lookupRemoteHost(addr net.Addr) string {
+	rhost, _, err := net.SplitHostPort(addr.String())
+	if err != nil {
+		rhost = addr.String()
+	}
+
+	rhosts, err := net.LookupAddr(rhost)
+	if err == nil {
+		rhost = fmt.Sprintf("%s [%s]", rhosts[0], rhost)
+	}
+
+	return rhost
+}
+
 type Server interface {
 	Name() string
 	TLSConfig() *tls.Config

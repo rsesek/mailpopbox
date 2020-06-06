@@ -510,17 +510,7 @@ func (conn *connection) handleSendAs(env *Envelope) {
 }
 
 func (conn *connection) getReceivedInfo(envelope Envelope) []byte {
-	rhost, _, err := net.SplitHostPort(conn.remoteAddr.String())
-	if err != nil {
-		rhost = conn.remoteAddr.String()
-	}
-
-	rhosts, err := net.LookupAddr(rhost)
-	if err == nil {
-		rhost = fmt.Sprintf("%s [%s]", rhosts[0], rhost)
-	}
-
-	base := fmt.Sprintf("Received: from %s (%s)\r\n        ", conn.ehlo, rhost)
+	base := fmt.Sprintf("Received: from %s (%s)\r\n        ", conn.ehlo, lookupRemoteHost(conn.remoteAddr))
 
 	with := "SMTP"
 	if conn.esmtp {

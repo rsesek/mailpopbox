@@ -191,12 +191,7 @@ func TestDeliveryFailureMessage(t *testing.T) {
 		t.Errorf("Missing %q in %q", expected, contentStr)
 	}
 
-	expected = "Reporting-MTA: localhost\n"
-	if !strings.Contains(contentStr, expected) {
-		t.Errorf("Missing %q in %q", expected, contentStr)
-	}
-
-	expected = "X-Remote-Address: 127.0.0.1\n"
+	expected = "Reporting-MTA: dns; localhost [127.0.0.1]\n"
 	if !strings.Contains(contentStr, expected) {
 		t.Errorf("Missing %q in %q", expected, contentStr)
 	}
