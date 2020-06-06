@@ -7,12 +7,13 @@
 package smtp
 
 import (
+	"crypto/rand"
 	"crypto/tls"
-	"regexp"
 	"fmt"
 	"io"
 	"net"
 	"net/mail"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -62,6 +63,12 @@ func WriteEnvelopeForDelivery(w io.Writer, e Envelope) {
 	fmt.Fprintf(w, "Delivered-To: <%s>\r\n", e.RcptTo[0].Address)
 	fmt.Fprintf(w, "Return-Path: <%s>\r\n", e.MailFrom.Address)
 	w.Write(e.Data)
+}
+
+func generateEnvelopeId(prefix string, t time.Time) string {
+	var idBytes [4]byte
+	rand.Read(idBytes[:])
+	return fmt.Sprintf("%s.%d.%x", prefix, t.UnixNano(), idBytes)
 }
 
 type Server interface {
