@@ -7,8 +7,9 @@
 package smtp
 
 import (
-	"crypto/rand"
+	"bytes"
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"net/mail"
@@ -29,6 +30,26 @@ const (
 	stateData
 )
 
+type delivery int
+
+func (d delivery) String() string {
+	switch d {
+	case deliverUnknown:
+		return "unknown"
+	case deliverInbound:
+		return "inbound"
+	case deliverOutbound:
+		return "outbound"
+	}
+	panic("Unknown delivery")
+}
+
+const (
+	deliverUnknown  delivery = iota
+	deliverInbound           // Mail is not from one of this server's domains.
+	deliverOutbound          // Mail IS from one of this server's domains.
+)
+
 type connection struct {
 	server Server
 
@@ -42,8 +63,16 @@ type connection struct {
 
 	log *zap.Logger
 
+	// The authcid from a PLAIN SASL login. Non-empty iff tls is non-nil and
+	// doAUTH() succeeded.
+	authc string
+
 	state
 	line string
+
+	delivery
+	// For deliverOutbound, replaces the From and Reply-To values.
+	sendAs *mail.Address
 
 	ehlo     string
 	mailFrom *mail.Address
@@ -73,7 +102,12 @@ func AcceptConnection(netConn net.Conn, server Server, log *zap.Logger) {
 			return
 		}
 
-		conn.log.Info("ReadLine()", zap.String("line", conn.line))
+		lineForLog := conn.line
+		const authPlain = "AUTH PLAIN "
+		if strings.HasPrefix(conn.line, authPlain) {
+			lineForLog = authPlain + "[redacted]"
+		}
+		conn.log.Info("ReadLine()", zap.String("line", lineForLog))
 
 		var cmd string
 		if _, err = fmt.Sscanf(conn.line, "%s", &cmd); err != nil {
@@ -94,6 +128,8 @@ func AcceptConnection(netConn net.Conn, server Server, log *zap.Logger) {
 			conn.doEHLO()
 		case "STARTTLS":
 			conn.doSTARTTLS()
+		case "AUTH":
+			conn.doAUTH()
 		case "MAIL":
 			conn.doMAIL()
 		case "RCPT":
@@ -171,6 +207,9 @@ func (conn *connection) doEHLO() {
 		if conn.server.TLSConfig() != nil && conn.tls == nil {
 			conn.tp.PrintfLine("250-STARTTLS")
 		}
+		if conn.tls != nil {
+			conn.tp.PrintfLine("250-AUTH PLAIN")
+		}
 		conn.tp.PrintfLine("250 SIZE %d", 40960000)
 	}
 
@@ -210,6 +249,72 @@ func (conn *connection) doSTARTTLS() {
 	conn.log.Info("TLS connection done", zap.String("state", conn.getTransportString()))
 }
 
+func (conn *connection) doAUTH() {
+	if conn.state != stateInitial || conn.tls == nil {
+		conn.reply(ReplyBadSequence)
+		return
+	}
+
+	if conn.authc != "" {
+		conn.writeReply(503, "already authenticated")
+		return
+	}
+
+	var cmd, authType, authString string
+	n, err := fmt.Sscanf(conn.line, "%s %s %s", &cmd, &authType, &authString)
+	if n < 2 {
+		conn.reply(ReplyBadSyntax)
+		return
+	}
+
+	if authType != "PLAIN" {
+		conn.writeReply(504, "unrecognized auth type")
+		return
+	}
+
+	// If only 2 tokens were scanned, then an initial response was not provided.
+	if n == 2 && conn.line[len(conn.line)-1] != ' ' {
+		conn.reply(ReplyBadSyntax)
+		return
+	}
+
+	conn.log.Info("doAUTH()")
+
+	if authString == "" {
+		conn.writeReply(334, " ")
+
+		authString, err = conn.tp.ReadLine()
+		if err != nil {
+			conn.log.Error("failed to read auth line", zap.Error(err))
+			conn.reply(ReplyBadSyntax)
+			return
+		}
+	}
+
+	authBytes, err := base64.StdEncoding.DecodeString(authString)
+	if err != nil {
+		conn.reply(ReplyBadSyntax)
+		return
+	}
+
+	authParts := strings.Split(string(authBytes), "\x00")
+	if len(authParts) != 3 {
+		conn.log.Error("bad auth line syntax")
+		conn.reply(ReplyBadSyntax)
+		return
+	}
+
+	if !conn.server.Authenticate(authParts[0], authParts[1], authParts[2]) {
+		conn.log.Error("failed to authenticate", zap.String("authc", authParts[1]))
+		conn.writeReply(535, "invalid credentials")
+		return
+	}
+
+	conn.log.Info("authenticated", zap.String("authz", authParts[0]), zap.String("authc", authParts[1]))
+	conn.authc = authParts[1]
+	conn.reply(ReplyOK)
+}
+
 func (conn *connection) doMAIL() {
 	if conn.state != stateInitial {
 		conn.reply(ReplyBadSequence)
@@ -227,6 +332,16 @@ func (conn *connection) doMAIL() {
 	if err != nil || conn.mailFrom == nil {
 		conn.reply(ReplyBadSyntax)
 		return
+	}
+
+	if conn.server.VerifyAddress(*conn.mailFrom) == ReplyOK {
+		if DomainForAddress(*conn.mailFrom) != DomainForAddressString(conn.authc) {
+			conn.writeReply(550, "not authenticated")
+			return
+		}
+		conn.delivery = deliverOutbound
+	} else {
+		conn.delivery = deliverInbound
 	}
 
 	conn.log.Info("doMAIL()", zap.String("address", conn.mailFrom.Address))
@@ -253,7 +368,7 @@ func (conn *connection) doRCPT() {
 		return
 	}
 
-	if reply := conn.server.VerifyAddress(*address); reply != ReplyOK {
+	if reply := conn.server.VerifyAddress(*address); reply != ReplyOK && conn.delivery == deliverInbound {
 		conn.log.Warn("invalid address",
 			zap.String("address", address.Address),
 			zap.Stringer("reply", reply))
@@ -261,7 +376,9 @@ func (conn *connection) doRCPT() {
 		return
 	}
 
-	conn.log.Info("doRCPT()", zap.String("address", address.Address))
+	conn.log.Info("doRCPT()",
+		zap.String("address", address.Address),
+		zap.String("delivery", conn.delivery.String()))
 
 	conn.rcptTo = append(conn.rcptTo, *address)
 
@@ -294,46 +411,106 @@ func (conn *connection) doDATA() {
 		MailFrom:   *conn.mailFrom,
 		RcptTo:     conn.rcptTo,
 		Received:   received,
-		ID:         conn.envelopeID(received),
+		ID:         generateEnvelopeId("m", received),
+		Data:       data,
 	}
+
+	conn.handleSendAs(&env)
 
 	conn.log.Info("received message",
 		zap.Int("bytes", len(data)),
 		zap.Time("date", received),
-		zap.String("id", env.ID))
+		zap.String("id", env.ID),
+		zap.String("delivery", conn.delivery.String()))
 
 	trace := conn.getReceivedInfo(env)
 
-	env.Data = append(trace, data...)
+	env.Data = append(trace, env.Data...)
 
-	if reply := conn.server.OnMessageDelivered(env); reply != nil {
-		conn.log.Warn("message was rejected", zap.String("id", env.ID))
-		conn.reply(*reply)
-		return
+	if conn.delivery == deliverInbound {
+		if reply := conn.server.OnMessageDelivered(env); reply != nil {
+			conn.log.Warn("message was rejected", zap.String("id", env.ID))
+			conn.reply(*reply)
+			return
+		}
+	} else if conn.delivery == deliverOutbound {
+		conn.server.RelayMessage(env)
 	}
 
 	conn.state = stateInitial
+	conn.resetBuffers()
 	conn.reply(ReplyOK)
 }
 
-func (conn *connection) envelopeID(t time.Time) string {
-	var idBytes [4]byte
-	rand.Read(idBytes[:])
-	return fmt.Sprintf("m.%d.%x", t.UnixNano(), idBytes)
+func (conn *connection) handleSendAs(env *Envelope) {
+	if conn.delivery != deliverOutbound {
+		return
+	}
+
+	// Find the separator between the message header and body.
+	headerIdx := bytes.Index(env.Data, []byte("\n\n"))
+	if headerIdx == -1 {
+		conn.log.Error("send-as: could not find headers index")
+		return
+	}
+
+	var buf bytes.Buffer
+
+	headers := bytes.SplitAfter(env.Data[:headerIdx], []byte("\n"))
+
+	var fromIdx, subjectIdx int
+	for i, header := range headers {
+		if bytes.HasPrefix(header, []byte("From:")) {
+			fromIdx = i
+			continue
+		}
+		if bytes.HasPrefix(header, []byte("Subject:")) {
+			subjectIdx = i
+			continue
+		}
+	}
+
+	if subjectIdx == -1 {
+		conn.log.Error("send-as: could not find Subject header")
+		return
+	}
+	if fromIdx == -1 {
+		conn.log.Error("send-as: could not find From header")
+		return
+	}
+
+	sendAs := SendAsSubject.FindSubmatchIndex(headers[subjectIdx])
+	if sendAs == nil {
+		// No send-as modification.
+		return
+	}
+
+	// Submatch 0 is the whole sendas magic. Submatch 1 is the address prefix.
+	sendAsUser := headers[subjectIdx][sendAs[2]:sendAs[3]]
+	sendAsAddress := string(sendAsUser) + "@" + DomainForAddressString(conn.authc)
+
+	for i, header := range headers {
+		if i == subjectIdx {
+			buf.Write(header[:sendAs[0]])
+			buf.Write(header[sendAs[1]:])
+		} else if i == fromIdx {
+			addressStart := bytes.LastIndexByte(header, byte('<'))
+			buf.Write(header[:addressStart+1])
+			buf.WriteString(sendAsAddress)
+			buf.WriteString(">\n")
+		} else {
+			buf.Write(header)
+		}
+	}
+
+	buf.Write(env.Data[headerIdx:])
+
+	env.Data = buf.Bytes()
+	env.MailFrom.Address = sendAsAddress
 }
 
 func (conn *connection) getReceivedInfo(envelope Envelope) []byte {
-	rhost, _, err := net.SplitHostPort(conn.remoteAddr.String())
-	if err != nil {
-		rhost = conn.remoteAddr.String()
-	}
-
-	rhosts, err := net.LookupAddr(rhost)
-	if err == nil {
-		rhost = fmt.Sprintf("%s [%s]", rhosts[0], rhost)
-	}
-
-	base := fmt.Sprintf("Received: from %s (%s)\r\n        ", conn.ehlo, rhost)
+	base := fmt.Sprintf("Received: from %s (%s)\r\n        ", conn.ehlo, lookupRemoteHost(conn.remoteAddr))
 
 	with := "SMTP"
 	if conn.esmtp {
@@ -344,7 +521,9 @@ func (conn *connection) getReceivedInfo(envelope Envelope) []byte {
 	}
 	base += fmt.Sprintf("by %s (mailpopbox) with %s id %s\r\n        ", conn.server.Name(), with, envelope.ID)
 
-	base += fmt.Sprintf("for <%s>\r\n        ", envelope.RcptTo[0].Address)
+	if len(envelope.RcptTo) > 0 {
+		base += fmt.Sprintf("for <%s>\r\n        ", envelope.RcptTo[0].Address)
+	}
 
 	transport := conn.getTransportString()
 	date := envelope.Received.Format(time.RFC1123Z) // Same as RFC 5322 § 3.3
@@ -421,6 +600,8 @@ func (conn *connection) doRSET() {
 }
 
 func (conn *connection) resetBuffers() {
+	conn.delivery = deliverUnknown
+	conn.sendAs = nil
 	conn.mailFrom = nil
 	conn.rcptTo = make([]mail.Address, 0)
 }

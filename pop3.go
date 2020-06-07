@@ -104,7 +104,7 @@ func (server *pop3Server) Name() string {
 
 func (server *pop3Server) OpenMailbox(user, pass string) (pop3.Mailbox, error) {
 	for _, s := range server.config.Servers {
-		if user == "mailbox@"+s.Domain && pass == s.MailboxPassword {
+		if user == MailboxAccount+s.Domain && pass == s.MailboxPassword {
 			return server.openMailbox(s.MaildropPath)
 		}
 	}
