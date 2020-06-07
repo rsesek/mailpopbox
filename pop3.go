@@ -177,7 +177,7 @@ func (mb *mailbox) ListMessages() ([]pop3.Message, error) {
 }
 
 func (mb *mailbox) GetMessage(id int) pop3.Message {
-	if id > len(mb.messages) {
+	if id == 0 || id > len(mb.messages) {
 		return nil
 	}
 	return &mb.messages[id-1]
