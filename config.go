@@ -20,6 +20,8 @@ type Config struct {
 	Servers []Server
 }
 
+const MailboxAccount = "mailbox@"
+
 type Server struct {
 	// Domain is the second component of a mail address: <local-part@domain.com>.
 	Domain string

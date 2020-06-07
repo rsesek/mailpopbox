@@ -7,6 +7,8 @@
 package smtp
 
 import (
+	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"net/mail"
@@ -32,9 +34,9 @@ func ok(t testing.TB, err error) {
 }
 
 func readCodeLine(t testing.TB, conn *textproto.Conn, code int) string {
-	_, message, err := conn.ReadCodeLine(code)
+	actual, message, err := conn.ReadCodeLine(code)
 	if err != nil {
-		t.Errorf("%s ReadCodeLine error: %v", _fl(1), err)
+		t.Errorf("%s ReadCodeLine error, expected %d, got %d: %v", _fl(1), code, actual, err)
 	}
 	return message
 }
@@ -61,22 +63,47 @@ func runServer(t *testing.T, server Server) net.Listener {
 	return l
 }
 
+type userAuth struct {
+	authz, authc, passwd string
+}
+
 type testServer struct {
 	EmptyServerCallbacks
+	domain    string
 	blockList []string
+	tlsConfig *tls.Config
+	*userAuth
+	relayed []Envelope
 }
 
 func (s *testServer) Name() string {
 	return "Test-Server"
 }
 
+func (s *testServer) TLSConfig() *tls.Config {
+	return s.tlsConfig
+}
+
 func (s *testServer) VerifyAddress(addr mail.Address) ReplyLine {
+	if DomainForAddress(addr) != s.domain {
+		return ReplyBadMailbox
+	}
 	for _, block := range s.blockList {
 		if strings.ToLower(block) == addr.Address {
 			return ReplyBadMailbox
 		}
 	}
 	return ReplyOK
+}
+
+func (s *testServer) Authenticate(authz, authc, passwd string) bool {
+	return s.userAuth.authz == authz &&
+		s.userAuth.authc == authc &&
+		s.userAuth.passwd == passwd
+}
+
+func (s *testServer) RelayMessage(en Envelope) {
+	s.relayed = append(s.relayed, en)
 }
 
 func createClient(t *testing.T, addr net.Addr) *textproto.Conn {
@@ -96,12 +123,14 @@ type requestResponse struct {
 
 func runTableTest(t testing.TB, conn *textproto.Conn, seq []requestResponse) {
 	for i, rr := range seq {
-		t.Logf("%s case %d", _fl(1), i)
 		ok(t, conn.PrintfLine(rr.request))
 		if rr.handler != nil {
 			rr.handler(t, conn)
 		} else {
 			readCodeLine(t, conn, rr.responseCode)
+		}
+		if t.Failed() {
+			t.Logf("%s case %d", _fl(1), i)
 		}
 	}
 }
@@ -109,6 +138,7 @@ func runTableTest(t testing.TB, conn *textproto.Conn, seq []requestResponse) {
 // RFC 5321 § D.1
 func TestScenarioTypical(t *testing.T) {
 	s := testServer{
+		domain:    "foo.com",
 		blockList: []string{"Green@foo.com"},
 	}
 	l := runServer(t, &s)
@@ -156,6 +186,7 @@ func TestScenarioTypical(t *testing.T) {
 
 func TestVerifyAddress(t *testing.T) {
 	s := testServer{
+		domain:    "test.mail",
 		blockList: []string{"banned@test.mail"},
 	}
 	l := runServer(t, &s)
@@ -191,8 +222,10 @@ func TestBadAddress(t *testing.T) {
 }
 
 func TestCaseSensitivty(t *testing.T) {
-	s := &testServer{}
-	s.blockList = []string{"reject@mail.com"}
+	s := &testServer{
+		domain:    "mail.com",
+		blockList: []string{"reject@mail.com"},
+	}
 	l := runServer(t, s)
 	defer l.Close()
 
@@ -280,4 +313,298 @@ func TestGetReceivedInfo(t *testing.T) {
 		}
 	}
 
+}
+
+func getTLSConfig(t *testing.T) *tls.Config {
+	cert, err := tls.LoadX509KeyPair("../testtls/domain.crt", "../testtls/domain.key")
+	if err != nil {
+		t.Fatal(err)
+		return nil
+	}
+	return &tls.Config{
+		ServerName:         "localhost",
+		Certificates:       []tls.Certificate{cert},
+		InsecureSkipVerify: true,
+	}
+}
+
+func setupTLSClient(t *testing.T, addr net.Addr) *textproto.Conn {
+	nc, err := net.Dial(addr.Network(), addr.String())
+	ok(t, err)
+
+	conn := textproto.NewConn(nc)
+	readCodeLine(t, conn, 220)
+
+	ok(t, conn.PrintfLine("EHLO test-tls"))
+	_, resp, err := conn.ReadResponse(250)
+	ok(t, err)
+	if !strings.Contains(resp, "STARTTLS\n") {
+		t.Errorf("STARTTLS not advertised")
+	}
+
+	ok(t, conn.PrintfLine("STARTTLS"))
+	readCodeLine(t, conn, 220)
+
+	tc := tls.Client(nc, getTLSConfig(t))
+	err = tc.Handshake()
+	ok(t, err)
+
+	conn = textproto.NewConn(tc)
+
+	ok(t, conn.PrintfLine("EHLO test-tls-started"))
+	_, resp, err = conn.ReadResponse(250)
+	ok(t, err)
+	if strings.Contains(resp, "STARTTLS\n") {
+		t.Errorf("STARTTLS advertised when already started")
+	}
+
+	return conn
+}
+
+func b64enc(s string) string {
+	return string(base64.StdEncoding.EncodeToString([]byte(s)))
+}
+
+func TestTLS(t *testing.T) {
+	l := runServer(t, &testServer{tlsConfig: getTLSConfig(t)})
+	defer l.Close()
+
+	setupTLSClient(t, l.Addr())
+}
+
+func TestAuthWithoutTLS(t *testing.T) {
+	l := runServer(t, &testServer{})
+	defer l.Close()
+
+	conn := createClient(t, l.Addr())
+	readCodeLine(t, conn, 220)
+
+	ok(t, conn.PrintfLine("EHLO test"))
+	_, resp, err := conn.ReadResponse(250)
+	ok(t, err)
+
+	if strings.Contains(resp, "AUTH") {
+		t.Errorf("AUTH should not be advertised over plaintext")
+	}
+}
+
+func TestAuth(t *testing.T) {
+	l := runServer(t, &testServer{
+		tlsConfig: getTLSConfig(t),
+		userAuth: &userAuth{
+			authz:  "-authz-",
+			authc:  "-authc-",
+			passwd: "goats",
+		},
+	})
+	defer l.Close()
+
+	conn := setupTLSClient(t, l.Addr())
+
+	runTableTest(t, conn, []requestResponse{
+		{"AUTH", 501, nil},
+		{"AUTH OAUTHBEARER", 504, nil},
+		{"AUTH PLAIN", 501, nil}, // Bad syntax, missing space.
+		{"AUTH PLAIN ", 334, nil},
+		{b64enc("abc\x00def\x00ghf"), 535, nil},
+		{"AUTH PLAIN ", 334, nil},
+		{b64enc("\x00"), 501, nil},
+		{"AUTH PLAIN ", 334, nil},
+		{"this isn't base 64", 501, nil},
+		{"AUTH PLAIN ", 334, nil},
+		{b64enc("-authz-\x00-authc-\x00goats"), 250, nil},
+		{"AUTH PLAIN ", 503, nil}, // Already authenticated.
+		{"NOOP", 250, nil},
+	})
+}
+
+func TestAuthNoInitialResponse(t *testing.T) {
+	l := runServer(t, &testServer{
+		tlsConfig: getTLSConfig(t),
+		userAuth: &userAuth{
+			authz:  "",
+			authc:  "user",
+			passwd: "longpassword",
+		},
+	})
+	defer l.Close()
+
+	conn := setupTLSClient(t, l.Addr())
+
+	runTableTest(t, conn, []requestResponse{
+		{"AUTH PLAIN " + b64enc("\x00user\x00longpassword"), 250, nil},
+	})
+}
+
+func TestRelayRequiresAuth(t *testing.T) {
+	l := runServer(t, &testServer{
+		domain:    "example.com",
+		tlsConfig: getTLSConfig(t),
+		userAuth: &userAuth{
+			authz:  "",
+			authc:  "mailbox@example.com",
+			passwd: "test",
+		},
+	})
+	defer l.Close()
+
+	conn := setupTLSClient(t, l.Addr())
+
+	runTableTest(t, conn, []requestResponse{
+		{"MAIL FROM:<apples@example.com>", 550, nil},
+		{"MAIL FROM:<mailbox@example.com>", 550, nil},
+		{"AUTH PLAIN ", 334, nil},
+		{b64enc("\x00mailbox@example.com\x00test"), 250, nil},
+		{"MAIL FROM:<mailbox@example.com>", 250, nil},
+	})
+}
+
+func setupRelayTest(t *testing.T) (server *testServer, l net.Listener, conn *textproto.Conn) {
+	server = &testServer{
+		domain:    "example.com",
+		tlsConfig: getTLSConfig(t),
+		userAuth: &userAuth{
+			authz:  "",
+			authc:  "mailbox@example.com",
+			passwd: "test",
+		},
+	}
+	l = runServer(t, server)
+	conn = setupTLSClient(t, l.Addr())
+	runTableTest(t, conn, []requestResponse{
+		{"AUTH PLAIN ", 334, nil},
+		{b64enc("\x00mailbox@example.com\x00test"), 250, nil},
+	})
+	return
+}
+
+func TestBasicRelay(t *testing.T) {
+	server, l, conn := setupRelayTest(t)
+	defer l.Close()
+
+	runTableTest(t, conn, []requestResponse{
+		{"MAIL FROM:<mailbox@example.com>", 250, nil},
+		{"RCPT TO:<dest@another.net>", 250, nil},
+		{"DATA", 354, func(t testing.TB, conn *textproto.Conn) {
+			readCodeLine(t, conn, 354)
+
+			ok(t, conn.PrintfLine("From: <mailbox@example.com>"))
+			ok(t, conn.PrintfLine("To: <dest@example.com>"))
+			ok(t, conn.PrintfLine("Subject: Basic relay\n"))
+			ok(t, conn.PrintfLine("This is a basic relay message"))
+			ok(t, conn.PrintfLine("."))
+			readCodeLine(t, conn, 250)
+		}},
+	})
+
+	if len(server.relayed) != 1 {
+		t.Errorf("Expected 1 relayed message, got %d", len(server.relayed))
+	}
+}
+
+func TestSendAsRelay(t *testing.T) {
+	server, l, conn := setupRelayTest(t)
+	defer l.Close()
+
+	runTableTest(t, conn, []requestResponse{
+		{"MAIL FROM:<mailbox@example.com>", 250, nil},
+		{"RCPT TO:<valid@dest.xyz>", 250, nil},
+		{"DATA", 354, func(t testing.TB, conn *textproto.Conn) {
+			readCodeLine(t, conn, 354)
+
+			ok(t, conn.PrintfLine("From: <mailbox@example.com>"))
+			ok(t, conn.PrintfLine("To: <valid@dest.xyz>"))
+			ok(t, conn.PrintfLine("Subject: Send-as relay [sendas:source]\n"))
+			ok(t, conn.PrintfLine("We've switched the senders!"))
+			ok(t, conn.PrintfLine("."))
+			readCodeLine(t, conn, 250)
+		}},
+	})
+
+	if len(server.relayed) != 1 {
+		t.Fatalf("Expected 1 relayed message, got %d", len(server.relayed))
+	}
+
+	replaced := "source@example.com"
+	original := "mailbox@example.com"
+
+	en := server.relayed[0]
+	if en.MailFrom.Address != replaced {
+		t.Errorf("Expected mail to be from %q, got %q", replaced, en.MailFrom.Address)
+	}
+
+	if len(en.RcptTo) != 1 {
+		t.Errorf("Expected 1 recipient, got %d", len(en.RcptTo))
+	}
+	if en.RcptTo[0].Address != "valid@dest.xyz" {
+		t.Errorf("Unexpected RcptTo %q", en.RcptTo[0].Address)
+	}
+
+	msg := string(en.Data)
+
+	if strings.Index(msg, original) != -1 {
+		t.Errorf("Should not find %q in message %q", original, msg)
+	}
+
+	if strings.Index(msg, "\nFrom: <source@example.com>\n") == -1 {
+		t.Errorf("Could not find From: header in message %q", msg)
+	}
+
+	if strings.Index(msg, "\nSubject: Send-as relay \n") == -1 {
+		t.Errorf("Could not find modified Subject: header in message %q", msg)
+	}
+}
+
+func TestSendMultipleRelay(t *testing.T) {
+	server, l, conn := setupRelayTest(t)
+	defer l.Close()
+
+	runTableTest(t, conn, []requestResponse{
+		{"MAIL FROM:<mailbox@example.com>", 250, nil},
+		{"RCPT TO:<valid@dest.xyz>", 250, nil},
+		{"RCPT TO:<another@dest.org>", 250, nil},
+		{"DATA", 354, func(t testing.TB, conn *textproto.Conn) {
+			readCodeLine(t, conn, 354)
+
+			ok(t, conn.PrintfLine("To: Cindy <valid@dest.xyz>, Sam <another@dest.org>"))
+			ok(t, conn.PrintfLine("From: Finn <mailbox@example.com>"))
+			ok(t, conn.PrintfLine("Subject: Two destinations [sendas:source]\n"))
+			ok(t, conn.PrintfLine("And we've switched the senders!"))
+			ok(t, conn.PrintfLine("."))
+			readCodeLine(t, conn, 250)
+		}},
+	})
+
+	if len(server.relayed) != 1 {
+		t.Fatalf("Expected 1 relayed message, got %d", len(server.relayed))
+	}
+
+	replaced := "source@example.com"
+	original := "mailbox@example.com"
+
+	en := server.relayed[0]
+	if en.MailFrom.Address != replaced {
+		t.Errorf("Expected mail to be from %q, got %q", replaced, en.MailFrom.Address)
+	}
+
+	if len(en.RcptTo) != 2 {
+		t.Errorf("Expected 2 recipient, got %d", len(en.RcptTo))
+	}
+	if en.RcptTo[0].Address != "valid@dest.xyz" {
+		t.Errorf("Unexpected RcptTo %q", en.RcptTo[0].Address)
+	}
+
+	msg := string(en.Data)
+
+	if strings.Index(msg, original) != -1 {
+		t.Errorf("Should not find %q in message %q", original, msg)
+	}
+
+	if strings.Index(msg, "\nFrom: Finn <source@example.com>\n") == -1 {
+		t.Errorf("Could not find From: header in message %q", msg)
+	}
+
+	if strings.Index(msg, "\nSubject: Two destinations \n") == -1 {
+		t.Errorf("Could not find modified Subject: header in message %q", msg)
+	}
 }

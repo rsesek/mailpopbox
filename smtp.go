@@ -13,7 +13,6 @@ import (
 	"net/mail"
 	"os"
 	"path"
-	"strings"
 
 	"go.uber.org/zap"
 
@@ -102,8 +101,28 @@ func (server *smtpServer) VerifyAddress(addr mail.Address) smtp.ReplyLine {
 	return smtp.ReplyOK
 }
 
-func (server *smtpServer) OnEHLO() *smtp.ReplyLine {
-	return nil
+func (server *smtpServer) Authenticate(authz, authc, passwd string) bool {
+	authcAddr, err := mail.ParseAddress(authc)
+	if err != nil {
+		return false
+	}
+
+	authzAddr, err := mail.ParseAddress(authz)
+	if authz != "" && err != nil {
+		return false
+	}
+
+	domain := smtp.DomainForAddress(*authcAddr)
+	for _, s := range server.config.Servers {
+		if domain == s.Domain {
+			authOk := authc == MailboxAccount+s.Domain && passwd == s.MailboxPassword
+			if authzAddr != nil {
+				authOk = authOk && smtp.DomainForAddress(*authzAddr) == domain
+			}
+			return authOk
+		}
+	}
+	return false
 }
 
 func (server *smtpServer) OnMessageDelivered(en smtp.Envelope) *smtp.ReplyLine {
@@ -124,14 +143,13 @@ func (server *smtpServer) OnMessageDelivered(en smtp.Envelope) *smtp.ReplyLine {
 	return nil
 }
 
+func (server *smtpServer) RelayMessage(en smtp.Envelope) {
+	log := server.log.With(zap.String("id", en.ID))
+	go smtp.RelayMessage(server, en, log)
+}
+
 func (server *smtpServer) maildropForAddress(addr mail.Address) string {
-	domainIdx := strings.LastIndex(addr.Address, "@")
-	if domainIdx == -1 {
-		return ""
-	}
-
-	domain := addr.Address[domainIdx+1:]
-
+	domain := smtp.DomainForAddress(addr)
 	for _, s := range server.config.Servers {
 		if domain == s.Domain {
 			return s.MaildropPath
