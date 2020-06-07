@@ -85,7 +85,7 @@ func TestMessageDelivery(t *testing.T) {
 		ID:       "msgid",
 	}
 
-	if rl := s.OnMessageDelivered(env); rl != nil {
+	if rl := s.DeliverMessage(env); rl != nil {
 		t.Errorf("Failed to deliver message: %v", rl)
 	}
 

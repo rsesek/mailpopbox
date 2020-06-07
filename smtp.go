@@ -125,7 +125,7 @@ func (server *smtpServer) Authenticate(authz, authc, passwd string) bool {
 	return false
 }
 
-func (server *smtpServer) OnMessageDelivered(en smtp.Envelope) *smtp.ReplyLine {
+func (server *smtpServer) DeliverMessage(en smtp.Envelope) *smtp.ReplyLine {
 	maildrop := server.maildropForAddress(en.RcptTo[0])
 	if maildrop == "" {
 		// TODO: log error

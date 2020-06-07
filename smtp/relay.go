@@ -153,5 +153,5 @@ func deliverRelayFailure(server Server, env Envelope, log *zap.Logger, to, error
 	mw.Close()
 
 	failure.Data = buf.Bytes()
-	server.OnMessageDelivered(failure)
+	server.DeliverMessage(failure)
 }

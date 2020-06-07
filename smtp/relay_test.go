@@ -25,7 +25,7 @@ type deliveryServer struct {
 	messages []Envelope
 }
 
-func (s *deliveryServer) OnMessageDelivered(env Envelope) *ReplyLine {
+func (s *deliveryServer) DeliverMessage(env Envelope) *ReplyLine {
 	s.messages = append(s.messages, env)
 	return nil
 }

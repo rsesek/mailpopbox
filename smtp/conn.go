@@ -428,7 +428,7 @@ func (conn *connection) doDATA() {
 	env.Data = append(trace, env.Data...)
 
 	if conn.delivery == deliverInbound {
-		if reply := conn.server.OnMessageDelivered(env); reply != nil {
+		if reply := conn.server.DeliverMessage(env); reply != nil {
 			conn.log.Warn("message was rejected", zap.String("id", env.ID))
 			conn.reply(*reply)
 			return

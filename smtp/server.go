@@ -94,7 +94,7 @@ type Server interface {
 	VerifyAddress(mail.Address) ReplyLine
 	// Verify that the authc+passwd identity can send mail as authz.
 	Authenticate(authz, authc, passwd string) bool
-	OnMessageDelivered(Envelope) *ReplyLine
+	DeliverMessage(Envelope) *ReplyLine
 
 	// RelayMessage instructs the server to send the Envelope to another
 	// MTA for outbound delivery.
@@ -115,7 +115,7 @@ func (*EmptyServerCallbacks) Authenticate(authz, authc, passwd string) bool {
 	return false
 }
 
-func (*EmptyServerCallbacks) OnMessageDelivered(Envelope) *ReplyLine {
+func (*EmptyServerCallbacks) DeliverMessage(Envelope) *ReplyLine {
 	return nil
 }
 
