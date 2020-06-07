@@ -107,6 +107,7 @@ func AcceptConnection(netConn net.Conn, po PostOffice, log *zap.Logger) {
 }
 
 func (conn *connection) ok(msg string) {
+	conn.log.Info("ok", zap.String("reply", msg))
 	if len(msg) > 0 {
 		msg = " " + msg
 	}
