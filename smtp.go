@@ -128,13 +128,13 @@ func (server *smtpServer) Authenticate(authz, authc, passwd string) bool {
 func (server *smtpServer) DeliverMessage(en smtp.Envelope) *smtp.ReplyLine {
 	maildrop := server.maildropForAddress(en.RcptTo[0])
 	if maildrop == "" {
-		// TODO: log error
+		server.log.Error("faild to open maildrop to deliver message", zap.String("id", en.ID))
 		return &smtp.ReplyBadMailbox
 	}
 
 	f, err := os.Create(path.Join(maildrop, en.ID+".msg"))
 	if err != nil {
-		// TODO: log error
+		server.log.Error("failed to create message file", zap.String("id", en.ID), zap.Error(err))
 		return &smtp.ReplyBadMailbox
 	}
 

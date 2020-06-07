@@ -114,8 +114,8 @@ func (server *pop3Server) OpenMailbox(user, pass string) (pop3.Mailbox, error) {
 func (server *pop3Server) openMailbox(maildrop string) (*mailbox, error) {
 	files, err := ioutil.ReadDir(maildrop)
 	if err != nil {
-		// TODO: hide error, log instead
-		return nil, err
+		server.log.Error("failed read maildrop dir", zap.String("dir", maildrop), zap.Error(err))
+		return nil, errors.New("error opening maildrop")
 	}
 
 	mb := &mailbox{
