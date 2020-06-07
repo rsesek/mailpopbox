@@ -7,7 +7,13 @@
 package main
 
 import (
+	"io/ioutil"
+	"net/textproto"
+	"os"
+	"path/filepath"
 	"testing"
+
+	"go.uber.org/zap"
 )
 
 func TestReset(t *testing.T) {
@@ -39,5 +45,233 @@ func TestReset(t *testing.T) {
 
 	if msg.Deleted() {
 		t.Errorf("reset did not un-delete message %v", msg)
+	}
+}
+
+func TestOpenMailboxAuth(t *testing.T) {
+	dir, err := ioutil.TempDir("", "maildrop")
+	if err != nil {
+		t.Errorf("Failed to create temp dir: %v", err)
+		return
+	}
+	defer os.RemoveAll(dir)
+
+	s := &pop3Server{
+		config: Config{
+			Servers: []Server{
+				{
+					Domain:          "example.com",
+					MailboxPassword: "letmein",
+					MaildropPath:    dir,
+				},
+				{
+					Domain:          "test.net",
+					MailboxPassword: "open-sesame",
+					MaildropPath:    dir,
+				},
+			},
+		},
+		log: zap.NewNop(),
+	}
+
+	cases := []struct {
+		user, pass string
+		ok         bool
+	}{
+		{"mailbox@example.com", "letmein", true},
+		{"mailbox@test.net", "open-sesame", true},
+		{"mailbox@example.com", "open-sesame", false},
+		{"test@test.net", "open-sesame", false},
+		{"mailbox@an-example.net", "letmein", false},
+	}
+	for i, c := range cases {
+		mb, err := s.OpenMailbox(c.user, c.pass)
+		actual := (mb != nil && err == nil)
+		if actual != c.ok {
+			t.Errorf("Expected error=%v for case %d (%#v), got %v (error=%v, mb=%v)", c.ok, i, c, actual, err, mb)
+		}
+	}
+}
+
+func TestBasicListener(t *testing.T) {
+	dir, err := ioutil.TempDir("", "maildrop")
+	if err != nil {
+		t.Errorf("Failed to create temp dir: %v", err)
+		return
+	}
+	defer os.RemoveAll(dir)
+
+	s := &pop3Server{
+		config: Config{
+			POP3Port: 9648,
+			Hostname: "example.com",
+			Servers: []Server{
+				{
+					Domain:       "example.com",
+					MaildropPath: dir,
+				},
+			},
+		},
+		log: zap.NewNop(),
+	}
+
+	go s.run()
+
+	conn, err := textproto.Dial("tcp", "localhost:9648")
+	if err != nil {
+		t.Errorf("Failed to dial test server: %v", err)
+		return
+	}
+
+	_, err = conn.ReadLine()
+	if err != nil {
+		t.Errorf("Failed to read line: %v\n", err)
+		return
+	}
+}
+
+func TestMailbox(t *testing.T) {
+	dir, err := ioutil.TempDir("", "maildrop")
+	if err != nil {
+		t.Errorf("Failed to create temp dir: %v", err)
+		return
+	}
+	defer os.RemoveAll(dir)
+
+	// Create the first message.
+	f, err := os.Create(filepath.Join(dir, "a.msg"))
+	if err != nil {
+		t.Errorf("Failed to create a.msg: %v", err)
+		return
+	}
+	for i := 0; i < 1024*10; i++ {
+		buf := []byte{'a'}
+		_, err = f.Write(buf)
+		if err != nil {
+			t.Errorf("Failed to write a.msg: %v", err)
+		}
+	}
+	f.Close()
+
+	// Create the second message.
+	f, err = os.Create(filepath.Join(dir, "b.msg"))
+	if err != nil {
+		t.Errorf("Failed to create b.msg: %v", err)
+		return
+	}
+	for i := 0; i < 1024*3; i++ {
+		buf := []byte{'z'}
+		_, err = f.Write(buf)
+		if err != nil {
+			t.Errorf("Failed to write z.msg: %v", err)
+		}
+	}
+	f.Close()
+
+	s := &pop3Server{
+		config: Config{
+			Servers: []Server{
+				{
+					Domain:          "example.com",
+					MailboxPassword: "letmein",
+					MaildropPath:    dir,
+				},
+			},
+		},
+		log: zap.NewNop(),
+	}
+
+	// Test message metadata.
+	mb, err := s.OpenMailbox("mailbox@example.com", "letmein")
+	if err != nil {
+		t.Errorf("Failed to open mailbox: %v", err)
+	}
+
+	msgs, err := mb.ListMessages()
+	if err != nil {
+		t.Errorf("Failed to list messages: %v", err)
+	}
+
+	if len(msgs) != 2 {
+		t.Errorf("Expected 2 messages, got %d", len(msgs))
+	}
+
+	if mb.GetMessage(0) != nil {
+		t.Errorf("Messages should be 1-indexed")
+	}
+	if mb.GetMessage(3) != nil {
+		t.Errorf("Retreived unexpected message")
+	}
+
+	if msgs[0] != mb.GetMessage(msgs[0].ID()) {
+		t.Errorf("Failed to look up message by ID")
+	}
+
+	if msgs[0].UniqueID() != "a" {
+		t.Errorf("Expected message #1 unique ID to be a, got %s", msgs[0].UniqueID())
+	}
+	expectedSize := 1024 * 10
+	if msgs[0].Size() != expectedSize {
+		t.Errorf("Expected message #1 size to be %v, got %v", expectedSize, msgs[0].Size())
+	}
+
+	if msgs[1].UniqueID() != "b" {
+		t.Errorf("Expected message #2 unique ID to be b, got %s", msgs[0].UniqueID())
+	}
+	expectedSize = 1024 * 3
+	if msgs[1].Size() != expectedSize {
+		t.Errorf("Expected message #2 size to be %v, got %v", expectedSize, msgs[0].Size())
+	}
+
+	// Test message contents.
+	rc, err := mb.Retrieve(msgs[0])
+	if err != nil {
+		t.Errorf("Failed to retrieve message: %v", err)
+	}
+	rc.Close()
+
+	// Test deletion marking and reset.
+	err = mb.Delete(msgs[1])
+	if err != nil {
+		t.Errorf("Failed to mark message #2 for deletion: %v", err)
+	}
+
+	if !msgs[1].Deleted() {
+		t.Errorf("Message should be marked for deletion and isn't")
+	}
+
+	mb.Reset()
+
+	if msgs[1].Deleted() {
+		t.Errorf("Message is marked for deletion and shouldn't be")
+	}
+
+	// Test deletion for real.
+	err = mb.Delete(msgs[0])
+	if err != nil {
+		t.Errorf("Failed to mark message for deletion: %v", err)
+	}
+
+	err = mb.Close()
+	if err != nil {
+		t.Errorf("Failed to close mailbox: %v", err)
+	}
+
+	mb, err = s.OpenMailbox("mailbox@example.com", "letmein")
+	if err != nil {
+		t.Errorf("Failed to re-open mailbox: %v", err)
+	}
+
+	msgs, err = mb.ListMessages()
+	if err != nil {
+		t.Errorf("Failed to list messages: %v", err)
+	}
+
+	if len(msgs) != 1 {
+		t.Errorf("Number of messages should be 1, got %d", len(msgs))
+	}
+
+	if msgs[0].UniqueID() != "b" {
+		t.Errorf("Message Unique ID should be b, got %s", msgs[0].UniqueID())
 	}
 }
