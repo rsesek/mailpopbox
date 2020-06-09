@@ -86,9 +86,9 @@ func TestOpenMailboxAuth(t *testing.T) {
 	}
 	for i, c := range cases {
 		mb, err := s.OpenMailbox(c.user, c.pass)
-		actual := (mb != nil && err == nil)
-		if actual != c.ok {
-			t.Errorf("Expected error=%v for case %d (%#v), got %v (error=%v, mb=%v)", c.ok, i, c, actual, err, mb)
+		got := (mb != nil && err == nil)
+		if got != c.ok {
+			t.Errorf("Expected error=%v for case %d (%#v), got %v (error=%v, mb=%v)", c.ok, i, c, got, err, mb)
 		}
 	}
 }
@@ -125,7 +125,7 @@ func TestBasicListener(t *testing.T) {
 
 	_, err = conn.ReadLine()
 	if err != nil {
-		t.Errorf("Failed to read line: %v\n", err)
+		t.Errorf("Failed to read line: %v", err)
 		return
 	}
 }
@@ -192,8 +192,8 @@ func TestMailbox(t *testing.T) {
 		t.Errorf("Failed to list messages: %v", err)
 	}
 
-	if len(msgs) != 2 {
-		t.Errorf("Expected 2 messages, got %d", len(msgs))
+	if want, got := 2, len(msgs); want != got {
+		t.Errorf("Want %d messages, got %d", want, got)
 	}
 
 	if mb.GetMessage(0) != nil {
@@ -207,20 +207,18 @@ func TestMailbox(t *testing.T) {
 		t.Errorf("Failed to look up message by ID")
 	}
 
-	if msgs[0].UniqueID() != "a" {
-		t.Errorf("Expected message #1 unique ID to be a, got %s", msgs[0].UniqueID())
+	if want, got := "a", msgs[0].UniqueID(); want != got {
+		t.Errorf("Want message #1 unique ID to be %s, got %s", want, got)
 	}
-	expectedSize := 1024 * 10
-	if msgs[0].Size() != expectedSize {
-		t.Errorf("Expected message #1 size to be %v, got %v", expectedSize, msgs[0].Size())
+	if want, got := 1024*10, msgs[0].Size(); want != got {
+		t.Errorf("Want message #1 size to be %v, got %v", want, got)
 	}
 
-	if msgs[1].UniqueID() != "b" {
-		t.Errorf("Expected message #2 unique ID to be b, got %s", msgs[0].UniqueID())
+	if want, got := "b", msgs[1].UniqueID(); want != got {
+		t.Errorf("Want message #2 unique ID to be %s, got %s", want, got)
 	}
-	expectedSize = 1024 * 3
-	if msgs[1].Size() != expectedSize {
-		t.Errorf("Expected message #2 size to be %v, got %v", expectedSize, msgs[0].Size())
+	if want, got := 1024*3, msgs[1].Size(); want != got {
+		t.Errorf("Want message #2 size to be %v, got %v", want, got)
 	}
 
 	// Test message contents.
@@ -267,11 +265,11 @@ func TestMailbox(t *testing.T) {
 		t.Errorf("Failed to list messages: %v", err)
 	}
 
-	if len(msgs) != 1 {
-		t.Errorf("Number of messages should be 1, got %d", len(msgs))
+	if want, got := 1, len(msgs); want != got {
+		t.Errorf("Number of messages should be %d, got %d", want, got)
 	}
 
-	if msgs[0].UniqueID() != "b" {
-		t.Errorf("Message Unique ID should be b, got %s", msgs[0].UniqueID())
+	if want, got := "b", msgs[0].UniqueID(); want != got {
+		t.Errorf("Message Unique ID should be %s, got %s", want, got)
 	}
 }

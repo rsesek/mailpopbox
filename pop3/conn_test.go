@@ -197,26 +197,22 @@ func TestExampleSession(t *testing.T) {
 	responseOK(t, conn)
 
 	ok(t, conn.PrintfLine("STAT"))
-	line = responseOK(t, conn)
-	expected := "+OK 2 320"
-	if line != expected {
-		t.Errorf("STAT expected %q, got %q", expected, line)
+	if want, got := "+OK 2 320", responseOK(t, conn); want != got {
+		t.Errorf("STAT want %q, got %q", want, got)
 	}
 
 	ok(t, conn.PrintfLine("LIST"))
 	responseOK(t, conn)
 	lines, err := conn.ReadDotLines()
 	ok(t, err)
-	if len(lines) != 2 {
-		t.Errorf("LIST expected 2 lines, got %d", len(lines))
+	if want, got := 2, len(lines); want != got {
+		t.Errorf("LIST want %d lines, got %d", want, got)
 	}
-	expected = "1 120"
-	if lines[0] != expected {
-		t.Errorf("LIST line 0 expected %q, got %q", expected, lines[0])
+	if want, got := "1 120", lines[0]; want != got {
+		t.Errorf("LIST line 0 want %q, got %q", want, got)
 	}
-	expected = "2 200"
-	if lines[1] != expected {
-		t.Errorf("LIST line 1 expected %q, got %q", expected, lines[1])
+	if want, got := "2 200", lines[1]; want != got {
+		t.Errorf("LIST line 1 expected %q, got %q", want, got)
 	}
 
 	ok(t, conn.PrintfLine("QUIT"))
@@ -334,9 +330,9 @@ func TestRetr(t *testing.T) {
 				return ""
 			}
 
-			expected := []string{"hello"}
-			if !reflect.DeepEqual(resp, expected) {
-				t.Errorf("Expected %v, got %v", expected, resp)
+			want := []string{"hello"}
+			if !reflect.DeepEqual(resp, want) {
+				t.Errorf("Want %v, got %v", want, resp)
 			}
 
 			return ""
@@ -353,9 +349,9 @@ func TestRetr(t *testing.T) {
 				return ""
 			}
 
-			expected := []string{"this", "is a", ".", "test"}
-			if !reflect.DeepEqual(resp, expected) {
-				t.Errorf("Expected %v, got %v", expected, resp)
+			want := []string{"this", "is a", ".", "test"}
+			if !reflect.DeepEqual(resp, want) {
+				t.Errorf("Want %v, got %v", want, resp)
 			}
 
 			return ""
@@ -385,12 +381,12 @@ func TestUidl(t *testing.T) {
 				return ""
 			}
 
-			expected := []string{
+			want := []string{
 				fmt.Sprintf("1 %p", s.mb.msgs[1]),
 				fmt.Sprintf("3 %p", s.mb.msgs[3]),
 			}
-			if !reflect.DeepEqual(resp, expected) {
-				t.Errorf("Expected %v, got %v", expected, resp)
+			if !reflect.DeepEqual(resp, want) {
+				t.Errorf("Want %v, got %v", want, resp)
 			}
 
 			return ""

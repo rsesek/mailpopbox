@@ -47,22 +47,22 @@ func TestRelayRoundTrip(t *testing.T) {
 	host, port, _ := net.SplitHostPort(l.Addr().String())
 	relayMessageToHost(s, env, zap.NewNop(), env.RcptTo[0].Address, host, port)
 
-	if len(s.messages) != 1 {
-		t.Errorf("Expected 1 message to be delivered, got %d", len(s.messages))
+	if want, got := 1, len(s.messages); want != got {
+		t.Errorf("Want %d message to be delivered, got %d", want, got)
 		return
 	}
 
 	received := s.messages[0]
 
-	if env.MailFrom.Address != received.MailFrom.Address {
-		t.Errorf("Expected MailFrom %s, got %s", env.MailFrom.Address, received.MailFrom.Address)
+	if want, got := env.MailFrom.Address, received.MailFrom.Address; want != got {
+		t.Errorf("Want MailFrom %s, got %s", want, got)
 	}
-	if len(received.RcptTo) != 1 {
-		t.Errorf("Expected 1 RcptTo, got %d", len(received.RcptTo))
+	if want, got := 1, len(received.RcptTo); want != got {
+		t.Errorf("Want %d RcptTo, got %d", want, got)
 		return
 	}
-	if env.RcptTo[0].Address != received.RcptTo[0].Address {
-		t.Errorf("Expected RcptTo %s, got %s", env.RcptTo[0].Address, received.RcptTo[0].Address)
+	if want, got := env.RcptTo[0].Address, received.RcptTo[0].Address; want != got {
+		t.Errorf("Want RcptTo %s, got %s", want, got)
 	}
 
 	if !bytes.HasSuffix(received.Data, env.Data) {
@@ -86,15 +86,15 @@ func TestDeliveryFailureMessage(t *testing.T) {
 	errorStr2 := "general error 122"
 	deliverRelayFailure(s, env, zap.NewNop(), env.RcptTo[0].Address, errorStr1, fmt.Errorf(errorStr2))
 
-	if len(s.messages) != 1 {
-		t.Errorf("Expected 1 failure notification, got %d", len(s.messages))
+	if want, got := 1, len(s.messages); want != got {
+		t.Errorf("Want %d failure notification, got %d", want, got)
 		return
 	}
 
 	failure := s.messages[0]
 
-	if failure.RcptTo[0].Address != env.MailFrom.Address {
-		t.Errorf("Failure message should be delivered to sender %s, actually %s", env.MailFrom.Address, failure.RcptTo[0].Address)
+	if want, got := env.MailFrom.Address, failure.RcptTo[0].Address; want != got {
+		t.Errorf("Failure message should be delivered to sender %s, actually %s", want, got)
 	}
 
 	// Read the failure message.
@@ -112,25 +112,22 @@ func TestDeliveryFailureMessage(t *testing.T) {
 		return
 	}
 
-	expected := "multipart/report"
-	if mediatype != expected {
-		t.Errorf("Expected MIME type of %q, got %q", expected, mediatype)
+	if want, got := "multipart/report", mediatype; want != got {
+		t.Errorf("Want MIME type of %q, got %q", want, got)
 	}
 
-	expected = "delivery-status"
-	if mtheaders["report-type"] != expected {
-		t.Errorf("Expected report-type of %q, got %q", expected, mtheaders["report-type"])
+	if want, got := "delivery-status", mtheaders["report-type"]; want != got {
+		t.Errorf("Want report-type of %q, got %q", want, got)
 	}
 
 	boundary := mtheaders["boundary"]
 
-	expected = "Delivery Status Notification (Failure)"
-	if msg.Header["Subject"][0] != expected {
-		t.Errorf("Subject did not match %q, got %q", expected, mtheaders["Subject"])
+	if want, got := "Delivery Status Notification (Failure)", msg.Header["Subject"][0]; want != got {
+		t.Errorf("Want Subject field %q, got %q", want, got)
 	}
 
-	if msg.Header["To"][0] != "<"+env.MailFrom.Address+">" {
-		t.Errorf("To field does not match %q, got %q", env.MailFrom.Address, msg.Header["To"][0])
+	if want, got := "<"+env.MailFrom.Address+">", msg.Header["To"][0]; want != got {
+		t.Errorf("Want To field %q, got %q", want, got)
 	}
 
 	// Parse the multi-part messsage.
@@ -142,9 +139,8 @@ func TestDeliveryFailureMessage(t *testing.T) {
 	}
 
 	// First part is the human-readable error.
-	expected = "text/plain; charset=UTF-8"
-	if part.Header["Content-Type"][0] != expected {
-		t.Errorf("Part 0 type expected %q, got %q", expected, part.Header["Content-Type"][0])
+	if want, got := "text/plain; charset=UTF-8", part.Header["Content-Type"][0]; want != got {
+		t.Errorf("Part 0 type want %q, got %q", want, got)
 	}
 
 	content, err := ioutil.ReadAll(part)
@@ -158,9 +154,8 @@ func TestDeliveryFailureMessage(t *testing.T) {
 		t.Errorf("Missing Delivery Failure")
 	}
 
-	expected = fmt.Sprintf("%s:\n%s", errorStr1, errorStr2)
-	if !strings.Contains(contentStr, expected) {
-		t.Errorf("Missing error string %q", expected)
+	if want := fmt.Sprintf("%s:\n%s", errorStr1, errorStr2); !strings.Contains(contentStr, want) {
+		t.Errorf("Missing error string %q", want)
 	}
 
 	// Second part is the status information.
@@ -170,9 +165,8 @@ func TestDeliveryFailureMessage(t *testing.T) {
 		return
 	}
 
-	expected = "message/delivery-status"
-	if part.Header["Content-Type"][0] != expected {
-		t.Errorf("Part 1 type expected %q, got %q", expected, part.Header["Content-Type"][0])
+	if want, got := "message/delivery-status", part.Header["Content-Type"][0]; want != got {
+		t.Errorf("Part 1 type want %q, got %q", want, got)
 	}
 
 	content, err = ioutil.ReadAll(part)
@@ -182,19 +176,16 @@ func TestDeliveryFailureMessage(t *testing.T) {
 	}
 	contentStr = string(content)
 
-	expected = "Original-Envelope-ID: " + env.ID + "\n"
-	if !strings.Contains(contentStr, expected) {
-		t.Errorf("Missing %q in %q", expected, contentStr)
+	if want := "Original-Envelope-ID: " + env.ID + "\n"; !strings.Contains(contentStr, want) {
+		t.Errorf("Missing %q in %q", want, contentStr)
 	}
 
-	expected = "Reporting-UA: " + env.EHLO + "\n"
-	if !strings.Contains(contentStr, expected) {
-		t.Errorf("Missing %q in %q", expected, contentStr)
+	if want := "Reporting-UA: " + env.EHLO + "\n"; !strings.Contains(contentStr, want) {
+		t.Errorf("Missing %q in %q", want, contentStr)
 	}
 
-	expected = "Reporting-MTA: dns; localhost [127.0.0.1]\n"
-	if !strings.Contains(contentStr, expected) {
-		t.Errorf("Missing %q in %q", expected, contentStr)
+	if want := "Reporting-MTA: dns; localhost [127.0.0.1]\n"; !strings.Contains(contentStr, want) {
+		t.Errorf("Missing %q in %q", want, contentStr)
 	}
 
 	// Third part is the original message.
@@ -204,9 +195,8 @@ func TestDeliveryFailureMessage(t *testing.T) {
 		return
 	}
 
-	expected = "message/rfc822"
-	if part.Header["Content-Type"][0] != expected {
-		t.Errorf("Part 2 type expected %q, got %q", expected, part.Header["Content-Type"][0])
+	if want, got := "message/rfc822", part.Header["Content-Type"][0]; want != got {
+		t.Errorf("Part 2 type want %q, got %q", want, got)
 	}
 
 	content, err = ioutil.ReadAll(part)

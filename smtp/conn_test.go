@@ -300,15 +300,14 @@ func TestGetReceivedInfo(t *testing.T) {
 		actual := conn.getReceivedInfo(envelope)
 		actualLines := strings.SplitAfter(string(actual), crlf)
 
-		if len(actualLines) != len(test.expect) {
-			t.Errorf("wrong numbber of lines, expected %d, got %d", len(test.expect), len(actualLines))
+		if want, got := len(test.expect), len(actualLines); want != got {
+			t.Errorf("wrong numbber of lines, want %d, got %d", want, got)
 			continue
 		}
 
 		for i, line := range actualLines {
-			expect := test.expect[i]
-			if expect != strings.TrimLeft(line, " ") {
-				t.Errorf("Expected equal string %q, got %q", expect, line)
+			if want, got := test.expect[i], strings.TrimLeft(line, " "); want != got {
+				t.Errorf("want equal string %q, got %q", want, got)
 			}
 		}
 	}
@@ -497,8 +496,8 @@ func TestBasicRelay(t *testing.T) {
 		}},
 	})
 
-	if len(server.relayed) != 1 {
-		t.Errorf("Expected 1 relayed message, got %d", len(server.relayed))
+	if want, got := 1, len(server.relayed); want != got {
+		t.Errorf("Want %d relayed message, got %d", want, got)
 	}
 }
 
@@ -521,23 +520,23 @@ func TestSendAsRelay(t *testing.T) {
 		}},
 	})
 
-	if len(server.relayed) != 1 {
-		t.Fatalf("Expected 1 relayed message, got %d", len(server.relayed))
+	if want, got := 1, len(server.relayed); want != got {
+		t.Fatalf("Want %d relayed message, got %d", want, got)
 	}
 
 	replaced := "source@example.com"
 	original := "mailbox@example.com"
 
 	en := server.relayed[0]
-	if en.MailFrom.Address != replaced {
-		t.Errorf("Expected mail to be from %q, got %q", replaced, en.MailFrom.Address)
+	if want, got := replaced, en.MailFrom.Address; want != got {
+		t.Errorf("Want mail to be from %q, got %q", want, got)
 	}
 
-	if len(en.RcptTo) != 1 {
-		t.Errorf("Expected 1 recipient, got %d", len(en.RcptTo))
+	if want, got := 1, len(en.RcptTo); want != got {
+		t.Errorf("Want %d recipient, got %d", want, got)
 	}
-	if en.RcptTo[0].Address != "valid@dest.xyz" {
-		t.Errorf("Unexpected RcptTo %q", en.RcptTo[0].Address)
+	if want, got := "valid@dest.xyz", en.RcptTo[0].Address; want != got {
+		t.Errorf("Unexpected RcptTo %q", got)
 	}
 
 	msg := string(en.Data)
@@ -583,15 +582,15 @@ func TestSendMultipleRelay(t *testing.T) {
 	original := "mailbox@example.com"
 
 	en := server.relayed[0]
-	if en.MailFrom.Address != replaced {
-		t.Errorf("Expected mail to be from %q, got %q", replaced, en.MailFrom.Address)
+	if want, got := replaced, en.MailFrom.Address; want != got {
+		t.Errorf("Want mail to be from %q, got %q", want, got)
 	}
 
-	if len(en.RcptTo) != 2 {
-		t.Errorf("Expected 2 recipient, got %d", len(en.RcptTo))
+	if want, got := 2, len(en.RcptTo); want != got {
+		t.Errorf("Want %d recipients, got %d", want, got)
 	}
-	if en.RcptTo[0].Address != "valid@dest.xyz" {
-		t.Errorf("Unexpected RcptTo %q", en.RcptTo[0].Address)
+	if want, got := "valid@dest.xyz", en.RcptTo[0].Address; want != got {
+		t.Errorf("Unexpected RcptTo %q", got)
 	}
 
 	msg := string(en.Data)
