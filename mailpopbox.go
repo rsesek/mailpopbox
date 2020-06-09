@@ -43,6 +43,8 @@ func main() {
 		os.Exit(4)
 	}
 
+	log.Info("starting mailpopbox", zap.String("hostname", config.Hostname))
+
 	pop3 := runPOP3Server(config, log)
 	smtp := runSMTPServer(config, log)
 
