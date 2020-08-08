@@ -1,7 +1,7 @@
 .PHONY:
 all: coverage linux mac
 
-DIRTY=$(shell [[ -z `git status --untracked-files=no --porcelain` ]] || echo "-dirty")
+DIRTY=$(shell test -z "`git status --untracked-files=no --porcelain`" || echo "-dirty")
 GITHASH=$(shell git log --pretty='%H' -1)
 LDFLAG=-ldflags "-X 'main.versionGit=$(GITHASH)$(DIRTY)'"
 
