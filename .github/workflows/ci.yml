@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-go@v2
+      with:
+        go-version: ^1.14
+      id: go
+    - run: go get -v -t -d ./...
+    - run: make
+    - uses: actions/upload-artifact@v2
+      with:
+        path: cover.html
+    - uses: actions/upload-artifact@v2
+      with:
+        name: mailpopbox-linux-amd64
+        path: mailpopbox-*-linux-amd64.zip
+    - uses: actions/upload-artifact@v2
+      with:
+        name: mailpopbox-mac-amd64
+        path: mailpopbox-*-mac-amd64.zip
