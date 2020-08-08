@@ -198,7 +198,7 @@ periodically via polling, so message delivery can seem slower than normal.
     - **Password:** The password you specified in `config.json`
     - Check **Secured connection using TLS**
 
-Gmail will now let you send email as *mailbox@yourdomain.com*. But if you are replying to a message
-sent to *random@yourdomain.com*, you do not want the recipient to see the "mailbox" username in your
+Gmail will now let you send email as `mailbox@yourdomain.com`. But if you are replying to a message
+sent to `random@yourdomain.com`, you do not want the recipient to see the "mailbox" username in your
 reply. If you append `[sendas:random]` to the Subject line of the message, the SMTP server will
 change the From address to `random@yourdomain.com` and remove the special tag from the Subject line.
