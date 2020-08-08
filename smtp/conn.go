@@ -489,6 +489,8 @@ func (conn *connection) handleSendAs(env *Envelope) {
 	sendAsUser := headers[subjectIdx][sendAs[2]:sendAs[3]]
 	sendAsAddress := string(sendAsUser) + "@" + DomainForAddressString(conn.authc)
 
+	conn.log.Info("handling send-as", zap.String("address", sendAsAddress))
+
 	for i, header := range headers {
 		if i == subjectIdx {
 			buf.Write(header[:sendAs[0]])
