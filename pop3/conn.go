@@ -249,7 +249,7 @@ func (conn *connection) doRETR() {
 		return
 	}
 
-	conn.log.Info("retreive message", zap.String("unique-id", msg.UniqueID()))
+	conn.log.Info("retrieve message", zap.String("unique-id", msg.UniqueID()))
 	conn.ok(fmt.Sprintf("%d", msg.Size()))
 
 	w := conn.tp.DotWriter()
@@ -316,7 +316,7 @@ func (conn *connection) doUIDL() {
 }
 
 func (conn *connection) doCAPA() {
-	conn.ok("capabilitiy list")
+	conn.ok("capability list")
 
 	caps := []string{
 		"USER",
