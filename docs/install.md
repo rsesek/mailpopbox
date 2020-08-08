@@ -5,10 +5,15 @@ Gmail to POP messages off the server.
 
 ## Server
 
-Installation requires root access on a server capable of running long-lived processes. I recommend
-[Digital Ocean droplets](https://www.digitalocean.com/products/droplets/), which cost $5/month. This
-guide does not cover how to properly secure a Linux server, such as SSH configuration; please use
-other guides to do that if this is a new instance.
+Mailpopbox can be deployed on a variety of operating system environments, but this guide is for a
+Linux server with:
+
+- Root access and the ability to run long-lived processes (i.e. not shared hosting)
+- The **iptables** package
+
+I recommend [Digital Ocean droplets](https://www.digitalocean.com/products/droplets/), which cost
+$5/month. This guide does not cover how to properly secure a Linux server, such as SSH configuration
+and firewalls; please use other guides to do that if this is a new server instance.
 
 ## Install Mailpopbox
 
@@ -50,24 +55,37 @@ These commands assume you are running as root; if not, precede the commands with
         reserved ports that require root access to bind. Instead, mailpopbox binds these
         unprivileged ports and *iptables* will be used to route Internet traffic to the server. This
         is handled by the included systemd unit.
-    - The `Hostname` is the MX server hostname. Multiple catch-all domains can be configured, but
-        they will all share this MX hostname in e.g. the SMTP HELO.
+    - The `Hostname` is the MX server hostname. Multiple catch-all domains can be configured on a
+        single server, but they will all share this MX hostname in e.g. the SMTP HELO.
     - The `Domain` is the domain name for which `*@yourdomain.com` will be set up.
     - The `MailboxPassword` is the password for the `mailbox@yourdomain.com` account, used to
-        authenticate POP3 and outbound SMTP connections. Choose a strong password!
+        authenticate POP3 and outbound SMTP connections. Choose a strong (preferably random)
+        password!
     - The `TLSKeyPath` and `TLSCertPath` are used to find the TLS certificate, which will be
         configured below.
     - The `MaildropPath` is where delivered messages are stored until they are POP'd off the
         server.
+
+## Configure DNS
+
+1. Add a DNS A record to `yourdomain.com`, configuring the subdomain `mx.yourdomain.com` to point to
+the public IP address of the server running mailpopbox.
+
+2. Set or change the DNS MX record of `yourdomain.com` to point to `mx.yourdomain.com`.
+
+Changes to DNS can take up between 1 and 24 hours to propagate. The DNS entries need to be
+configured in order to continue installation.
 
 ## Setup Automatic TLS Certificates
 
 This guide will assume that your instance of mailpopbox is running on a system that also has a
 web server running. The web server will be used to host [ACME
 certificate](https://en.wikipedia.org/wiki/Automated_Certificate_Management_Environment) challenges.
-I recommend the [lego](https://github.com/go-acme/lego) tool for certificate management. If you
-already have a mechanism to get certificates, you can use that and just adjust the paths in
-`config.json`.
+I recommend the [lego](https://github.com/go-acme/lego) tool for certificate management.
+
+> If you already have a mechanism to get certificates, you can use that and just adjust the paths in
+> `config.json`. Also be sure to configure a hook for your auto-renew mechanism to restart mailpopbox
+> when a new certificate is installed.
 
 1. Install [lego](https://github.com/go-acme/lego) on the server.
 
@@ -90,6 +108,10 @@ content:
     </Directory>
     ```
 
+    You may also need to adjust the permissions so the web server can serve the files:
+    - `chmod o+x /home/mailpopbox`
+    - `chmod o+rx /home/mailpopbox/www`
+
 3. Reload the web server `systemctl reload httpd.service`
 
 4. Customize this command and register for the initial account and certificate:
@@ -106,20 +128,11 @@ line:
 
         mailpopbox ALL=(root) NOPASSWD: /usr/bin/systemctl restart mailpopbox.service
 
-6. Set up a cron job to automatically renew the certificate using `sudo crontab -u mailpopbx -e`
+6. Set up a cron job to automatically renew the certificate using `sudo crontab -u mailpopbox -e`
 and specifying this command (which is nearly the same as the `run` above, except it uses `renew` and
 a hook). Customize this command:
 
         0 22 * * * /usr/local/bin/lego --email email@domain.com --domains mx.yourdomain.com --http --http.webroot /home/mailpopbox/www --path /home/mailpopbox/cert renew --renew-hook "sudo /usr/bin/systemctl restart mailpopbox.service"
-
-## Configure DNS
-
-1. Add a DNS A record to `yourdomain.com`, to set up `mx.yourdomain.com` to point to the public IP
-address of the server running mailpopbox.
-
-2. Set or change the DNS MX record of `yourdomain.com` to point to `mx.yourdomain.com`.
-
-Changes to DNS can take up between 1 and 24 hours to propagate.
 
 ## Starting Mailpopbox
 
@@ -130,11 +143,11 @@ Changes to DNS can take up between 1 and 24 hours to propagate.
 > the ports specified in the `config.json` file. It also specifies the path to the `config.json`
 > file.
 
-2. Enable the systemd unit with `systemctl enable mailpopbox.service`
+2. Enable the systemd unit with `sudo systemctl enable mailpopbox.service`
 
-3. Start mailpopbox with `systemctl start mailpopbox.service`
+3. Start mailpopbox with `sudo systemctl start mailpopbox.service`
 
-4. Verify that the server has started with `journalctl -u mailpopbox`
+4. Verify that the server has started with `sudo journalctl -u mailpopbox`
 
 5. Test the connection to the server from your local machine: `openssl s_client -connect
 mx.yourdomain.com:995`. You should see your certificate printed by `openssl` and then a line that
@@ -165,8 +178,9 @@ of client.
 
 Gmail will now fetch messages delivered to the server. You can send a test message to
 `install-test@yourdomain.com` and it should be delivered within a few minutes. Note that Gmail
-fetches mail from the POP account periodically via polling, so message delivery can seem slower than
-normal.
+detects when a newly delivered message is the same as one in the *Sent* folder and it discards it;
+use a separate email account for this test. Gmail also fetches mail from the POP account
+periodically via polling, so message delivery can seem slower than normal.
 
 1. Go to **Gmail Settings** > **Accounts and Import**
 
