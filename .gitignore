@@ -2,5 +2,5 @@ config.json
 cover.html
 cover.out
 mailpopbox
-mailpopbox-linux-amd64
-mailpopbox-mac-amd64
+mailpopbox-*-linux-amd64.zip
+mailpopbox-*-mac-amd64.zip

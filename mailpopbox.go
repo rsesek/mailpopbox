@@ -14,12 +14,6 @@ import (
 	"go.uber.org/zap"
 )
 
-var (
-	versionGit = "development"
-	versionNumber = "2.0.0"
-	versionString = "mailpopbox " + versionNumber + " (" + versionGit + ")\n"
-)
-
 func main() {
 	if len(os.Args) != 2 {
 		fmt.Fprintf(os.Stderr, "Usage: %s config.json\n", os.Args[0])
