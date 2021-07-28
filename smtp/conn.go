@@ -312,7 +312,7 @@ func (conn *connection) doAUTH() {
 
 	conn.log.Info("authenticated", zap.String("authz", authParts[0]), zap.String("authc", authParts[1]))
 	conn.authc = authParts[1]
-	conn.reply(ReplyOK)
+	conn.reply(ReplyAuthOK)
 }
 
 func (conn *connection) doMAIL() {
