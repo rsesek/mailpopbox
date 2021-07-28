@@ -411,7 +411,7 @@ func TestAuth(t *testing.T) {
 		{"AUTH PLAIN ", 334, nil},
 		{"this isn't base 64", 501, nil},
 		{"AUTH PLAIN ", 334, nil},
-		{b64enc("-authz-\x00-authc-\x00goats"), 250, nil},
+		{b64enc("-authz-\x00-authc-\x00goats"), 235, nil},
 		{"AUTH PLAIN ", 503, nil}, // Already authenticated.
 		{"NOOP", 250, nil},
 	})
@@ -431,7 +431,7 @@ func TestAuthNoInitialResponse(t *testing.T) {
 	conn := setupTLSClient(t, l.Addr())
 
 	runTableTest(t, conn, []requestResponse{
-		{"AUTH PLAIN " + b64enc("\x00user\x00longpassword"), 250, nil},
+		{"AUTH PLAIN " + b64enc("\x00user\x00longpassword"), 235, nil},
 	})
 }
 
@@ -453,7 +453,7 @@ func TestRelayRequiresAuth(t *testing.T) {
 		{"MAIL FROM:<apples@example.com>", 550, nil},
 		{"MAIL FROM:<mailbox@example.com>", 550, nil},
 		{"AUTH PLAIN ", 334, nil},
-		{b64enc("\x00mailbox@example.com\x00test"), 250, nil},
+		{b64enc("\x00mailbox@example.com\x00test"), 235, nil},
 		{"MAIL FROM:<mailbox@example.com>", 250, nil},
 	})
 }
@@ -472,7 +472,7 @@ func setupRelayTest(t *testing.T) (server *testServer, l net.Listener, conn *tex
 	conn = setupTLSClient(t, l.Addr())
 	runTableTest(t, conn, []requestResponse{
 		{"AUTH PLAIN ", 334, nil},
-		{b64enc("\x00mailbox@example.com\x00test"), 250, nil},
+		{b64enc("\x00mailbox@example.com\x00test"), 235, nil},
 	})
 	return
 }
