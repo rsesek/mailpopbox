@@ -31,7 +31,7 @@ var SendAsSubject = regexp.MustCompile(`(?i)\[sendas:\s*([a-zA-Z0-9\.\-_]+)\]`)
 
 var (
 	ReplyOK               = ReplyLine{250, "OK"}
-	ReplyAuthOk           = ReplyLine{235, "auth success"}
+	ReplyAuthOK           = ReplyLine{235, "auth success"}
 	ReplyBadSyntax        = ReplyLine{501, "syntax error"}
 	ReplyBadSequence      = ReplyLine{503, "bad sequence of commands"}
 	ReplyBadMailbox       = ReplyLine{550, "mailbox unavailable"}
