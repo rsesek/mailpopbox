@@ -45,7 +45,11 @@ func TestRelayRoundTrip(t *testing.T) {
 	}
 
 	host, port, _ := net.SplitHostPort(l.Addr().String())
-	relayMessageToHost(s, env, zap.NewNop(), env.RcptTo[0].Address, host, port)
+	mta := mta{
+		server: s,
+		log:    zap.NewNop(),
+	}
+	mta.relayMessageToHost(env, zap.NewNop(), env.RcptTo[0].Address, host, port)
 
 	if want, got := 1, len(s.messages); want != got {
 		t.Errorf("Want %d message to be delivered, got %d", want, got)
@@ -84,7 +88,11 @@ func TestDeliveryFailureMessage(t *testing.T) {
 
 	errorStr1 := "internal message"
 	errorStr2 := "general error 122"
-	deliverRelayFailure(s, env, zap.NewNop(), env.RcptTo[0].Address, errorStr1, fmt.Errorf(errorStr2))
+	mta := mta{
+		server: s,
+		log:    zap.NewNop(),
+	}
+	mta.deliverRelayFailure(env, zap.NewNop(), env.RcptTo[0].Address, errorStr1, fmt.Errorf(errorStr2))
 
 	if want, got := 1, len(s.messages); want != got {
 		t.Errorf("Want %d failure notification, got %d", want, got)

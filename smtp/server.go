@@ -16,6 +16,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 type ReplyLine struct {
@@ -89,17 +91,53 @@ func lookupRemoteHost(addr net.Addr) string {
 	return rhost
 }
 
+// Server provides an interface for handling incoming SMTP requests via
+// AcceptConnection.
 type Server interface {
+	// Returns the name of the server, to use in HELO advertisements.
 	Name() string
+
+	// If non-nil, enables STARTTLS support on the SMTP server with the given
+	// configuration.
 	TLSConfig() *tls.Config
+
+	// Returns an status line indicating whether this server can receive
+	// mail for the specified email address.
 	VerifyAddress(mail.Address) ReplyLine
-	// Verify that the authc+passwd identity can send mail as authz.
+
+	// Verify that the authc+passwd identity can send mail as authz on this
+	// server.
 	Authenticate(authz, authc, passwd string) bool
+
+	// Delivers a valid incoming message to a recipient on this server. The
+	// addressee has been validated via VerifyAddress.
 	DeliverMessage(Envelope) *ReplyLine
 
 	// RelayMessage instructs the server to send the Envelope to another
 	// MTA for outbound delivery.
 	RelayMessage(Envelope)
+}
+
+// MTA (Mail Transport Agent) allows a Server to interface with other SMTP
+// MTAs.
+type MTA interface {
+	// RelayMessage will attempt to send the specified Envelope. It will ask the
+	// Server to dial the MX servers for the addresses in Envelope.RcptTo for
+	// delivery. If relaying fails, a failure notice will be sent to the sender
+	// via Server.DeliverMessage.
+	RelayMessage(Envelope)
+}
+
+func NewDefaultMTA(server Server, log *zap.Logger) MTA {
+	return &mta{
+		server: server,
+		log:    log,
+	}
+}
+
+type mta struct {
+	server Server
+	log    *zap.Logger
 }
 
 type EmptyServerCallbacks struct{}

@@ -20,21 +20,21 @@ import (
 	"go.uber.org/zap"
 )
 
-func RelayMessage(server Server, env Envelope, log *zap.Logger) {
+func (m *mta) RelayMessage(env Envelope) {
 	for _, rcptTo := range env.RcptTo {
-		sendLog := log.With(zap.String("address", rcptTo.Address))
+		sendLog := m.log.With(zap.String("address", rcptTo.Address), zap.String("id", env.ID))
 
 		domain := DomainForAddress(rcptTo)
 		mx, err := net.LookupMX(domain)
 		if err != nil || len(mx) < 1 {
-			deliverRelayFailure(server, env, log, rcptTo.Address, "failed to lookup MX records", err)
+			m.deliverRelayFailure(env, sendLog, rcptTo.Address, "failed to lookup MX records", err)
 			return
 		}
-		relayMessageToHost(server, env, sendLog, rcptTo.Address, mx[0].Host, "25")
+		m.relayMessageToHost(env, sendLog, rcptTo.Address, mx[0].Host, "25")
 	}
 }
 
-func relayMessageToHost(server Server, env Envelope, log *zap.Logger, to, host, port string) {
+func (m *mta) relayMessageToHost(env Envelope, log *zap.Logger, to, host, port string) {
 	from := env.MailFrom.Address
 	hostPort := net.JoinHostPort(host, port)
 	log = log.With(zap.String("host", hostPort))
@@ -42,49 +42,49 @@ func relayMessageToHost(server Server, env Envelope, log *zap.Logger, to, host, 
 	c, err := smtp.Dial(hostPort)
 	if err != nil {
 		// TODO - retry, or look at other MX records
-		deliverRelayFailure(server, env, log, to, "failed to dial host", err)
+		m.deliverRelayFailure(env, log, to, "failed to dial host", err)
 		return
 	}
 	defer c.Quit()
 
-	if err = c.Hello(server.Name()); err != nil {
-		deliverRelayFailure(server, env, log, to, "failed to HELO", err)
+	if err = c.Hello(m.server.Name()); err != nil {
+		m.deliverRelayFailure(env, log, to, "failed to HELO", err)
 		return
 	}
 
 	if hasTls, _ := c.Extension("STARTTLS"); hasTls {
 		config := &tls.Config{ServerName: host}
 		if err = c.StartTLS(config); err != nil {
-			deliverRelayFailure(server, env, log, to, "failed to STARTTLS", err)
+			m.deliverRelayFailure(env, log, to, "failed to STARTTLS", err)
 			return
 		}
 	}
 
 	if err = c.Mail(from); err != nil {
-		deliverRelayFailure(server, env, log, to, "failed MAIL FROM", err)
+		m.deliverRelayFailure(env, log, to, "failed MAIL FROM", err)
 		return
 	}
 
 	if err = c.Rcpt(to); err != nil {
-		deliverRelayFailure(server, env, log, to, "failed to RCPT TO", err)
+		m.deliverRelayFailure(env, log, to, "failed to RCPT TO", err)
 		return
 	}
 
 	wc, err := c.Data()
 	if err != nil {
-		deliverRelayFailure(server, env, log, to, "failed to DATA", err)
+		m.deliverRelayFailure(env, log, to, "failed to DATA", err)
 		return
 	}
 
 	_, err = wc.Write(env.Data)
 	if err != nil {
 		wc.Close()
-		deliverRelayFailure(server, env, log, to, "failed to write DATA", err)
+		m.deliverRelayFailure(env, log, to, "failed to write DATA", err)
 		return
 	}
 
 	if err = wc.Close(); err != nil {
-		deliverRelayFailure(server, env, log, to, "failed to close DATA", err)
+		m.deliverRelayFailure(env, log, to, "failed to close DATA", err)
 		return
 	}
 }
@@ -93,7 +93,7 @@ func relayMessageToHost(server Server, env Envelope, log *zap.Logger, to, host, 
 // writes to |log| the |errorStr| and |sendErr|, as well as preparing a new
 // message, based of |env|, delivered to |server| that reports error
 // information about the attempted delivery.
-func deliverRelayFailure(server Server, env Envelope, log *zap.Logger, to, errorStr string, sendErr error) {
+func (m *mta) deliverRelayFailure(env Envelope, log *zap.Logger, to, errorStr string, sendErr error) {
 	log.Error(errorStr, zap.Error(sendErr))
 
 	buf := &bytes.Buffer{}
@@ -153,5 +153,5 @@ func deliverRelayFailure(server Server, env Envelope, log *zap.Logger, to, error
 	mw.Close()
 
 	failure.Data = buf.Bytes()
-	server.DeliverMessage(failure)
+	m.server.DeliverMessage(failure)
 }

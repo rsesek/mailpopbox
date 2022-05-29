@@ -25,6 +25,7 @@ func runSMTPServer(config Config, log *zap.Logger) <-chan ServerControlMessage {
 		controlChan: make(chan ServerControlMessage),
 		log:         log.With(zap.String("server", "smtp")),
 	}
+	server.mta = smtp.NewDefaultMTA(&server, server.log)
 	go server.run()
 	return server.controlChan
 }
@@ -32,6 +33,8 @@ func runSMTPServer(config Config, log *zap.Logger) <-chan ServerControlMessage {
 type smtpServer struct {
 	config    Config
 	tlsConfig *tls.Config
+
+	mta smtp.MTA
 
 	log *zap.Logger
 
@@ -144,8 +147,7 @@ func (server *smtpServer) DeliverMessage(en smtp.Envelope) *smtp.ReplyLine {
 }
 
 func (server *smtpServer) RelayMessage(en smtp.Envelope) {
-	log := server.log.With(zap.String("id", en.ID))
-	go smtp.RelayMessage(server, en, log)
+	go server.mta.RelayMessage(en)
 }
 
 func (server *smtpServer) maildropForAddress(addr mail.Address) string {
