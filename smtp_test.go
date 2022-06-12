@@ -8,10 +8,12 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"net/mail"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"go.uber.org/zap"
@@ -140,5 +142,102 @@ func TestAuthenticate(t *testing.T) {
 		if actual != test.ok {
 			t.Errorf("Test %d, got %v, expected %v", i, actual, test.ok)
 		}
+	}
+}
+
+type testMTA struct {
+	relayed chan smtp.Envelope
+}
+
+func (m *testMTA) RelayMessage(en smtp.Envelope) {
+	m.relayed <- en
+}
+
+func newTestMTA() *testMTA {
+	return &testMTA{
+		relayed: make(chan smtp.Envelope),
+	}
+}
+
+func TestBasicRelay(t *testing.T) {
+	mta := newTestMTA()
+	server := smtpServer{
+		mta: mta,
+		log: zap.NewNop(),
+	}
+
+	buf := new(bytes.Buffer)
+	fmt.Fprintln(buf, "From: <mailbox@example.com>\r")
+	fmt.Fprintln(buf, "To: <dest@another.net>\r")
+	fmt.Fprintf(buf, "Subject: Basic relay\n\n")
+	fmt.Fprintln(buf, "This is a basic relay message")
+
+	en := smtp.Envelope{
+		MailFrom: mail.Address{Address: "mailbox@example.com"},
+		RcptTo:   []mail.Address{{Address: "dest@another.com"}},
+		Data:     buf.Bytes(),
+		ID:       "id1",
+	}
+
+	server.RelayMessage(en, en.MailFrom.Address)
+
+	relayed := <-mta.relayed
+
+	if !bytes.Equal(relayed.Data, en.Data) {
+		t.Errorf("Relayed message data does not match")
+	}
+}
+
+func TestSendAsRelay(t *testing.T) {
+	mta := newTestMTA()
+	server := smtpServer{
+		mta: mta,
+		log: zap.NewNop(),
+	}
+
+	buf := new(bytes.Buffer)
+	fmt.Fprintln(buf, "Received: msg from wherever")
+	fmt.Fprintln(buf, "From: <mailbox@example.com>")
+	fmt.Fprintln(buf, "To: <valid@dest.xyz>")
+	fmt.Fprintf(buf, "Subject: Send-as relay [sendas:source]\n\n")
+	fmt.Fprintln(buf, "We've switched the senders!")
+
+	en := smtp.Envelope{
+		MailFrom: mail.Address{Address: "mailbox@example.com"},
+		RcptTo:   []mail.Address{{Address: "valid@dest.xyz"}},
+		Data:     buf.Bytes(),
+		ID:       "id1",
+	}
+
+	server.RelayMessage(en, en.MailFrom.Address)
+
+	relayed := <-mta.relayed
+
+	replaced := "source@example.com"
+	original := "mailbox@example.com"
+
+	if want, got := replaced, relayed.MailFrom.Address; want != got {
+		t.Errorf("Want mail to be from %q, got %q", want, got)
+	}
+
+	if want, got := 1, len(relayed.RcptTo); want != got {
+		t.Errorf("Want %d recipient, got %d", want, got)
+	}
+	if want, got := "valid@dest.xyz", relayed.RcptTo[0].Address; want != got {
+		t.Errorf("Unexpected RcptTo %q", got)
+	}
+
+	msg := string(relayed.Data)
+
+	if strings.Index(msg, original) != -1 {
+		t.Errorf("Should not find %q in message %q", original, msg)
+	}
+
+	if strings.Index(msg, "\nFrom: <source@example.com>\n") == -1 {
+		t.Errorf("Could not find From: header in message %q", msg)
+	}
+
+	if strings.Index(msg, "\nSubject: Send-as relay \n") == -1 {
+		t.Errorf("Could not find modified Subject: header in message %q", msg)
 	}
 }

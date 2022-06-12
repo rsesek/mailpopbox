@@ -102,7 +102,7 @@ func (s *testServer) Authenticate(authz, authc, passwd string) bool {
 		s.userAuth.passwd == passwd
 }
 
-func (s *testServer) RelayMessage(en Envelope) {
+func (s *testServer) RelayMessage(en Envelope, authc string) {
 	s.relayed = append(s.relayed, en)
 }
 
@@ -501,59 +501,6 @@ func TestBasicRelay(t *testing.T) {
 	}
 }
 
-func TestSendAsRelay(t *testing.T) {
-	server, l, conn := setupRelayTest(t)
-	defer l.Close()
-
-	runTableTest(t, conn, []requestResponse{
-		{"MAIL FROM:<mailbox@example.com>", 250, nil},
-		{"RCPT TO:<valid@dest.xyz>", 250, nil},
-		{"DATA", 354, func(t testing.TB, conn *textproto.Conn) {
-			readCodeLine(t, conn, 354)
-
-			ok(t, conn.PrintfLine("From: <mailbox@example.com>"))
-			ok(t, conn.PrintfLine("To: <valid@dest.xyz>"))
-			ok(t, conn.PrintfLine("Subject: Send-as relay [sendas:source]\n"))
-			ok(t, conn.PrintfLine("We've switched the senders!"))
-			ok(t, conn.PrintfLine("."))
-			readCodeLine(t, conn, 250)
-		}},
-	})
-
-	if want, got := 1, len(server.relayed); want != got {
-		t.Fatalf("Want %d relayed message, got %d", want, got)
-	}
-
-	replaced := "source@example.com"
-	original := "mailbox@example.com"
-
-	en := server.relayed[0]
-	if want, got := replaced, en.MailFrom.Address; want != got {
-		t.Errorf("Want mail to be from %q, got %q", want, got)
-	}
-
-	if want, got := 1, len(en.RcptTo); want != got {
-		t.Errorf("Want %d recipient, got %d", want, got)
-	}
-	if want, got := "valid@dest.xyz", en.RcptTo[0].Address; want != got {
-		t.Errorf("Unexpected RcptTo %q", got)
-	}
-
-	msg := string(en.Data)
-
-	if strings.Index(msg, original) != -1 {
-		t.Errorf("Should not find %q in message %q", original, msg)
-	}
-
-	if strings.Index(msg, "\nFrom: <source@example.com>\n") == -1 {
-		t.Errorf("Could not find From: header in message %q", msg)
-	}
-
-	if strings.Index(msg, "\nSubject: Send-as relay \n") == -1 {
-		t.Errorf("Could not find modified Subject: header in message %q", msg)
-	}
-}
-
 func TestSendMultipleRelay(t *testing.T) {
 	server, l, conn := setupRelayTest(t)
 	defer l.Close()
@@ -567,7 +514,7 @@ func TestSendMultipleRelay(t *testing.T) {
 
 			ok(t, conn.PrintfLine("To: Cindy <valid@dest.xyz>, Sam <another@dest.org>"))
 			ok(t, conn.PrintfLine("From: Finn <mailbox@example.com>"))
-			ok(t, conn.PrintfLine("Subject: Two destinations [sendas:source]\n"))
+			ok(t, conn.PrintfLine("Subject: Two destinations\n"))
 			ok(t, conn.PrintfLine("And we've switched the senders!"))
 			ok(t, conn.PrintfLine("."))
 			readCodeLine(t, conn, 250)
@@ -578,11 +525,8 @@ func TestSendMultipleRelay(t *testing.T) {
 		t.Fatalf("Expected 1 relayed message, got %d", len(server.relayed))
 	}
 
-	replaced := "source@example.com"
-	original := "mailbox@example.com"
-
 	en := server.relayed[0]
-	if want, got := replaced, en.MailFrom.Address; want != got {
+	if want, got := "mailbox@example.com", en.MailFrom.Address; want != got {
 		t.Errorf("Want mail to be from %q, got %q", want, got)
 	}
 
@@ -595,15 +539,11 @@ func TestSendMultipleRelay(t *testing.T) {
 
 	msg := string(en.Data)
 
-	if strings.Index(msg, original) != -1 {
-		t.Errorf("Should not find %q in message %q", original, msg)
-	}
-
-	if strings.Index(msg, "\nFrom: Finn <source@example.com>\n") == -1 {
+	if strings.Index(msg, "\nFrom: Finn <mailbox@example.com>\n") == -1 {
 		t.Errorf("Could not find From: header in message %q", msg)
 	}
 
-	if strings.Index(msg, "\nSubject: Two destinations \n") == -1 {
-		t.Errorf("Could not find modified Subject: header in message %q", msg)
+	if strings.Index(msg, "\nSubject: Two destinations\n") == -1 {
+		t.Errorf("Could not find Subject: header in message %q", msg)
 	}
 }

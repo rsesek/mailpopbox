@@ -7,17 +7,21 @@
 package main
 
 import (
+	"bytes"
 	"crypto/tls"
 	"fmt"
 	"net"
 	"net/mail"
 	"os"
 	"path"
+	"regexp"
 
 	"go.uber.org/zap"
 
 	"src.bluestatic.org/mailpopbox/smtp"
 )
+
+var sendAsSubject = regexp.MustCompile(`(?i)\[sendas:\s*([a-zA-Z0-9\.\-_]+)\]`)
 
 func runSMTPServer(config Config, log *zap.Logger) <-chan ServerControlMessage {
 	server := smtpServer{
@@ -146,10 +150,6 @@ func (server *smtpServer) DeliverMessage(en smtp.Envelope) *smtp.ReplyLine {
 	return nil
 }
 
-func (server *smtpServer) RelayMessage(en smtp.Envelope) {
-	go server.mta.RelayMessage(en)
-}
-
 func (server *smtpServer) maildropForAddress(addr mail.Address) string {
 	domain := smtp.DomainForAddress(addr)
 	for _, s := range server.config.Servers {
@@ -159,4 +159,77 @@ func (server *smtpServer) maildropForAddress(addr mail.Address) string {
 	}
 
 	return ""
+}
+
+func (server *smtpServer) RelayMessage(en smtp.Envelope, authc string) {
+	go func() {
+		log := server.log.With(zap.String("id", en.ID))
+		server.handleSendAs(log, &en, authc)
+		server.mta.RelayMessage(en)
+	}()
+}
+
+func (server *smtpServer) handleSendAs(log *zap.Logger, en *smtp.Envelope, authc string) {
+	// Find the separator between the message header and body.
+	headerIdx := bytes.Index(en.Data, []byte("\n\n"))
+	if headerIdx == -1 {
+		log.Error("send-as: could not find headers index")
+		return
+	}
+
+	var buf bytes.Buffer
+
+	headers := bytes.SplitAfter(en.Data[:headerIdx], []byte("\n"))
+
+	var fromIdx, subjectIdx int
+	for i, header := range headers {
+		if bytes.HasPrefix(header, []byte("From:")) {
+			fromIdx = i
+			continue
+		}
+		if bytes.HasPrefix(header, []byte("Subject:")) {
+			subjectIdx = i
+			continue
+		}
+	}
+
+	if subjectIdx == -1 {
+		log.Error("send-as: could not find Subject header")
+		return
+	}
+	if fromIdx == -1 {
+		log.Error("send-as: could not find From header")
+		return
+	}
+
+	sendAs := sendAsSubject.FindSubmatchIndex(headers[subjectIdx])
+	if sendAs == nil {
+		// No send-as modification.
+		return
+	}
+
+	// Submatch 0 is the whole sendas magic. Submatch 1 is the address prefix.
+	sendAsUser := headers[subjectIdx][sendAs[2]:sendAs[3]]
+	sendAsAddress := string(sendAsUser) + "@" + smtp.DomainForAddressString(authc)
+
+	log.Info("handling send-as", zap.String("address", sendAsAddress))
+
+	for i, header := range headers {
+		if i == subjectIdx {
+			buf.Write(header[:sendAs[0]])
+			buf.Write(header[sendAs[1]:])
+		} else if i == fromIdx {
+			addressStart := bytes.LastIndexByte(header, byte('<'))
+			buf.Write(header[:addressStart+1])
+			buf.WriteString(sendAsAddress)
+			buf.WriteString(">\n")
+		} else {
+			buf.Write(header)
+		}
+	}
+
+	buf.Write(en.Data[headerIdx:])
+
+	en.Data = buf.Bytes()
+	en.MailFrom.Address = sendAsAddress
 }

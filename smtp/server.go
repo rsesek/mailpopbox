@@ -13,7 +13,6 @@ import (
 	"io"
 	"net"
 	"net/mail"
-	"regexp"
 	"strings"
 	"time"
 
@@ -28,8 +27,6 @@ type ReplyLine struct {
 func (l ReplyLine) String() string {
 	return fmt.Sprintf("%d %s", l.Code, l.Message)
 }
-
-var SendAsSubject = regexp.MustCompile(`(?i)\[sendas:\s*([a-zA-Z0-9\.\-_]+)\]`)
 
 var (
 	ReplyOK               = ReplyLine{250, "OK"}
@@ -114,8 +111,8 @@ type Server interface {
 	DeliverMessage(Envelope) *ReplyLine
 
 	// RelayMessage instructs the server to send the Envelope to another
-	// MTA for outbound delivery.
-	RelayMessage(Envelope)
+	// MTA for outbound delivery. `authc` reports the authenticated username.
+	RelayMessage(en Envelope, authc string)
 }
 
 // MTA (Mail Transport Agent) allows a Server to interface with other SMTP

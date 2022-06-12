@@ -7,7 +7,6 @@
 package smtp
 
 import (
-	"bytes"
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
@@ -415,8 +414,6 @@ func (conn *connection) doDATA() {
 		Data:       data,
 	}
 
-	conn.handleSendAs(&env)
-
 	conn.log.Info("received message",
 		zap.Int("bytes", len(data)),
 		zap.Time("date", received),
@@ -434,81 +431,12 @@ func (conn *connection) doDATA() {
 			return
 		}
 	} else if conn.delivery == deliverOutbound {
-		conn.server.RelayMessage(env)
+		conn.server.RelayMessage(env, conn.authc)
 	}
 
 	conn.state = stateInitial
 	conn.resetBuffers()
 	conn.reply(ReplyOK)
-}
-
-func (conn *connection) handleSendAs(env *Envelope) {
-	if conn.delivery != deliverOutbound {
-		return
-	}
-
-	// Find the separator between the message header and body.
-	headerIdx := bytes.Index(env.Data, []byte("\n\n"))
-	if headerIdx == -1 {
-		conn.log.Error("send-as: could not find headers index")
-		return
-	}
-
-	var buf bytes.Buffer
-
-	headers := bytes.SplitAfter(env.Data[:headerIdx], []byte("\n"))
-
-	var fromIdx, subjectIdx int
-	for i, header := range headers {
-		if bytes.HasPrefix(header, []byte("From:")) {
-			fromIdx = i
-			continue
-		}
-		if bytes.HasPrefix(header, []byte("Subject:")) {
-			subjectIdx = i
-			continue
-		}
-	}
-
-	if subjectIdx == -1 {
-		conn.log.Error("send-as: could not find Subject header")
-		return
-	}
-	if fromIdx == -1 {
-		conn.log.Error("send-as: could not find From header")
-		return
-	}
-
-	sendAs := SendAsSubject.FindSubmatchIndex(headers[subjectIdx])
-	if sendAs == nil {
-		// No send-as modification.
-		return
-	}
-
-	// Submatch 0 is the whole sendas magic. Submatch 1 is the address prefix.
-	sendAsUser := headers[subjectIdx][sendAs[2]:sendAs[3]]
-	sendAsAddress := string(sendAsUser) + "@" + DomainForAddressString(conn.authc)
-
-	conn.log.Info("handling send-as", zap.String("address", sendAsAddress))
-
-	for i, header := range headers {
-		if i == subjectIdx {
-			buf.Write(header[:sendAs[0]])
-			buf.Write(header[sendAs[1]:])
-		} else if i == fromIdx {
-			addressStart := bytes.LastIndexByte(header, byte('<'))
-			buf.Write(header[:addressStart+1])
-			buf.WriteString(sendAsAddress)
-			buf.WriteString(">\n")
-		} else {
-			buf.Write(header)
-		}
-	}
-
-	buf.Write(env.Data[headerIdx:])
-
-	env.Data = buf.Bytes()
-	env.MailFrom.Address = sendAsAddress
 }
 
 func (conn *connection) getReceivedInfo(envelope Envelope) []byte {
