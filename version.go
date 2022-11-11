@@ -8,6 +8,6 @@ package main
 
 var (
 	versionGit    = "development"
-	versionNumber = "2.0.1"
+	versionNumber = "2.1.0"
 	versionString = "mailpopbox " + versionNumber + " (" + versionGit + ")\n"
 )
