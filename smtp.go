@@ -102,8 +102,14 @@ func (server *smtpServer) TLSConfig() *tls.Config {
 }
 
 func (server *smtpServer) VerifyAddress(addr mail.Address) smtp.ReplyLine {
-	if server.maildropForAddress(addr) == "" {
+	s := server.configForAddress(addr)
+	if s == nil {
 		return smtp.ReplyBadMailbox
+	}
+	for _, blocked := range s.BlockedAddresses {
+		if blocked == addr.Address {
+			return smtp.ReplyMailboxUnallowed
+		}
 	}
 	return smtp.ReplyOK
 }
@@ -150,14 +156,21 @@ func (server *smtpServer) DeliverMessage(en smtp.Envelope) *smtp.ReplyLine {
 	return nil
 }
 
-func (server *smtpServer) maildropForAddress(addr mail.Address) string {
+func (server *smtpServer) configForAddress(addr mail.Address) *Server {
 	domain := smtp.DomainForAddress(addr)
 	for _, s := range server.config.Servers {
 		if domain == s.Domain {
-			return s.MaildropPath
+			return &s
 		}
 	}
+	return nil
+}
 
+func (server *smtpServer) maildropForAddress(addr mail.Address) string {
+	s := server.configForAddress(addr)
+	if s != nil {
+		return s.MaildropPath
+	}
 	return ""
 }
 

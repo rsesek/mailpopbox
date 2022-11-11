@@ -35,8 +35,9 @@ type Server struct {
 	// Location to store the mail messages.
 	MaildropPath string
 
-	// Blacklisted addresses that should not accept mail.
-	BlacklistedAddresses []string
+	// Addresses that should not accept mail. This should include the @domain
+	// component.
+	BlockedAddresses []string
 }
 
 func (c Config) GetTLSConfig() (*tls.Config, error) {

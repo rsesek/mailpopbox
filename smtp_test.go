@@ -36,6 +36,9 @@ func TestVerifyAddress(t *testing.T) {
 				{
 					Domain:       "example.com",
 					MaildropPath: dir,
+					BlockedAddresses: []string{
+						"blocked@example.com",
+					},
 				},
 			},
 		},
@@ -56,6 +59,9 @@ func TestVerifyAddress(t *testing.T) {
 	}
 	if s.VerifyAddress(mail.Address{Address: "unknown"}) == smtp.ReplyOK {
 		t.Errorf("Invalid mailbox reports to be valid")
+	}
+	if s.VerifyAddress(mail.Address{Address: "blocked@example.com"}) == smtp.ReplyOK {
+		t.Errorf("Blocked mailbox reports to be valid")
 	}
 }
 
