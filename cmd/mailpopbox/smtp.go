@@ -18,7 +18,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"src.bluestatic.org/mailpopbox/smtp"
+	"src.bluestatic.org/mailpopbox/pkg/smtp"
 )
 
 var sendAsSubject = regexp.MustCompile(`(?i)\[sendas:\s*([a-zA-Z0-9\.\-_]+)\]`)

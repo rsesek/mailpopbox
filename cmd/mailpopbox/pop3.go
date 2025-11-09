@@ -18,7 +18,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"src.bluestatic.org/mailpopbox/pop3"
+	"src.bluestatic.org/mailpopbox/pkg/pop3"
 )
 
 func runPOP3Server(config Config, log *zap.Logger) <-chan ServerControlMessage {

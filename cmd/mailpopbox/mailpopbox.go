@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"os"
 
+	"src.bluestatic.org/mailpopbox/pkg/version"
+
 	"go.uber.org/zap"
 )
 
@@ -21,7 +23,7 @@ func main() {
 	}
 
 	if os.Args[1] == "version" {
-		fmt.Print(versionString)
+		fmt.Print(version.VersionString)
 		os.Exit(0)
 	}
 

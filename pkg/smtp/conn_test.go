@@ -315,7 +315,7 @@ func TestGetReceivedInfo(t *testing.T) {
 }
 
 func getTLSConfig(t *testing.T) *tls.Config {
-	cert, err := tls.LoadX509KeyPair("../testtls/domain.crt", "../testtls/domain.key")
+	cert, err := tls.LoadX509KeyPair("../../testtls/domain.crt", "../../testtls/domain.key")
 	if err != nil {
 		t.Fatal(err)
 		return nil
