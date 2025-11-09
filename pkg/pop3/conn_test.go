@@ -244,7 +244,7 @@ func clientServerTest(t *testing.T, s *testServer, sequence []requestResponse) {
 	responseOK(t, conn)
 
 	for _, pair := range sequence {
-		ok(t, conn.PrintfLine(pair.command))
+		ok(t, conn.PrintfLine("%s", pair.command))
 		pair.expecter(t, conn)
 		if t.Failed() {
 			t.Logf("command %q", pair.command)

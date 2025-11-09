@@ -324,7 +324,7 @@ func (conn *connection) doCAPA() {
 		".",
 	}
 	for _, c := range caps {
-		conn.tp.PrintfLine(c)
+		conn.tp.PrintfLine("%s", c)
 	}
 }
 

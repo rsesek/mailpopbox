@@ -123,7 +123,7 @@ type requestResponse struct {
 
 func runTableTest(t testing.TB, conn *textproto.Conn, seq []requestResponse) {
 	for i, rr := range seq {
-		ok(t, conn.PrintfLine(rr.request))
+		ok(t, conn.PrintfLine("%s", rr.request))
 		if rr.handler != nil {
 			rr.handler(t, conn)
 		} else {
@@ -152,7 +152,7 @@ func TestScenarioTypical(t *testing.T) {
 	}
 
 	greet := "greeting.TestScenarioTypical"
-	ok(t, conn.PrintfLine("EHLO "+greet))
+	ok(t, conn.PrintfLine("EHLO %s", greet))
 
 	_, message, err := conn.ReadResponse(250)
 	ok(t, err)
