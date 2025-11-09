@@ -309,6 +309,56 @@ func TestCaseSensitivty(t *testing.T) {
 	})
 }
 
+func TestList(t *testing.T) {
+	s := newTestServer()
+	s.mb.msgs[1] = &testMessage{1, 5, false, "hello"}
+	s.mb.msgs[2] = &testMessage{2, 5, false, "world"}
+
+	clientServerTest(t, s, []requestResponse{
+		{"USER u", responseOK},
+		{"PASS p", responseOK},
+		{"LIST", func(t testing.TB, tp *textproto.Conn) string {
+			responseOK(t, tp)
+			lines, err := tp.ReadDotLines()
+			if err != nil {
+				t.Error(err)
+				return ""
+			}
+			if want, got := 2, len(lines); want != got {
+				t.Errorf("Expected %d lines, got %d", want, got)
+				return ""
+			}
+			if want, got := "1 5", lines[0]; want != got {
+				t.Errorf("Expected first line to be %q, got %q", want, got)
+				return ""
+			}
+			if want, got := "2 5", lines[1]; want != got {
+				t.Errorf("Expected second line to be %q, got %q", want, got)
+				return ""
+			}
+			return ""
+		}},
+		{"LIST 2", func(t testing.TB, tp *textproto.Conn) string {
+			responseOK(t, tp)
+			lines, err := tp.ReadDotLines()
+			if err != nil {
+				t.Error(err)
+				return ""
+			}
+			if want, got := 1, len(lines); want != got {
+				t.Errorf("Expected %d lines, got %d", want, got)
+				return ""
+			}
+			if want, got := "2 5", lines[0]; want != got {
+				t.Errorf("Expected line to be %q, got %q", want, got)
+				return ""
+			}
+			return ""
+		}},
+		{"LIST 5", responseERR},
+	})
+}
+
 func TestRetr(t *testing.T) {
 	s := newTestServer()
 	s.mb.msgs[1] = &testMessage{1, 5, false, "hello"}

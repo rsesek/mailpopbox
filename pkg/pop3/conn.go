@@ -212,11 +212,30 @@ func (conn *connection) doLIST() {
 		return
 	}
 
-	msgs, err := conn.mb.ListMessages()
-	if err != nil {
-		conn.log.Error("failed to list messages", zap.Error(err))
-		conn.err(err.Error())
-		return
+	var msgs []Message
+
+	var cmd string
+	var id int
+	n, _ := fmt.Sscanf(conn.line, "%s %d", &cmd, &id)
+	if n == 2 {
+		msg := conn.mb.GetMessage(id)
+		if msg == nil {
+			conn.err("No message with that ID")
+			return
+		}
+		if msg.Deleted() {
+			conn.err(errDeletedMsg)
+			return
+		}
+		msgs = []Message{msg}
+	} else {
+		var err error
+		msgs, err = conn.mb.ListMessages()
+		if err != nil {
+			conn.log.Error("failed to list messages", zap.Error(err))
+			conn.err(err.Error())
+			return
+		}
 	}
 
 	conn.ok("scan listing")
