@@ -12,10 +12,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/rand/v2"
 	"net/http"
 	"os"
 
+	"go.uber.org/zap"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/gmail/v1"
@@ -78,48 +78,18 @@ func getToken(ctx context.Context, config *oauth2.Config) (*oauth2.Token, error)
 		}
 	}
 
-	nonce := fmt.Sprintf("rd%d", rand.Int64())
-	ch := make(chan string)
+	srv := &http.Server{Addr: "localhost:8025"}
+	config.RedirectURL = fmt.Sprintf("http://%s", srv.Addr)
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", func(rw http.ResponseWriter, req *http.Request) {
-		if req.FormValue("state") != nonce {
-			log.Printf("Nonce mismatch, got %#v", req)
-			http.Error(rw, "", http.StatusBadRequest)
-			return
-		}
-		if code := req.FormValue("code"); code != "" {
-			fmt.Fprintln(rw, "<h1>Authorized!</h1>")
-			ch <- code
-			return
-		}
-		log.Printf("Invalid request - missing code: %#v", req)
-		http.Error(rw, "", http.StatusBadRequest)
-	})
+	srvCtx, cancel := context.WithCancel(ctx)
+	s := RunOAuthServer(srvCtx, srv, config, zap.L())
 
-	const listen = "localhost:8025"
-	srv := http.Server{
-		Addr:    listen,
-		Handler: mux,
-	}
-
-	config.RedirectURL = fmt.Sprintf("http://%s", listen)
-	authURL := config.AuthCodeURL(nonce)
-
+	authURL, ch := s.AuthorizeToken()
 	log.Printf("Authorize the application at this URL:\n\t%s", authURL)
 
-	go func() {
-		log.Print("Starting OAuth token receiver")
-		err := srv.ListenAndServe()
-		if err == http.ErrServerClosed {
-			log.Print("Server stopped")
-		} else {
-			log.Printf("Error with server: %v", err)
-		}
-	}()
-
 	code := <-ch
-	srv.Shutdown(ctx)
+	cancel()
+
 	log.Printf("Got code: %q", code)
 
 	token, err = config.Exchange(ctx, code)
