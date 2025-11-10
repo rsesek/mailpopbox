@@ -68,7 +68,7 @@ func runServer(t *testing.T, po PostOffice) net.Listener {
 			if err != nil {
 				return
 			}
-			go AcceptConnection(conn, po, zap.NewNop())
+			go AcceptConnection(conn, po, zap.L())
 		}
 	}()
 	return l

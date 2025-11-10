@@ -46,6 +46,9 @@ type connection struct {
 	user string
 }
 
+// AcceptConnection implements a POP3 server connection, parsing the client
+// requests sent over `netConn` and providing access to the mailboxes in the
+// specified `PostOffice`.
 func AcceptConnection(netConn net.Conn, po PostOffice, log *zap.Logger) {
 	log = log.With(zap.Stringer("client", netConn.RemoteAddr()))
 	conn := connection{
