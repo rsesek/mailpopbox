@@ -28,12 +28,14 @@ type ServerConfig struct {
 	Password string
 }
 
+type MonitorConfig struct {
+	Source       ServerConfig
+	Destination  ServerConfig
+	PollInterval time.Duration
+}
+
 type Config struct {
-	Monitor []struct {
-		Source       ServerConfig
-		Destination  ServerConfig
-		PollInterval time.Duration
-	}
+	Monitor []MonitorConfig
 
 	OAuthServer struct {
 		RedirectURL             string
