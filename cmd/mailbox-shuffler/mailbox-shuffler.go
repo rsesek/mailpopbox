@@ -11,9 +11,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
+
+	"src.bluestatic.org/mailpopbox/pkg/version"
 
 	"go.uber.org/zap"
 	"golang.org/x/oauth2"
@@ -22,35 +23,66 @@ import (
 	"google.golang.org/api/option"
 )
 
-const (
-	tokenFile = "dev/token.json"
-)
-
 func main() {
+	if len(os.Args) != 2 {
+		fmt.Fprintf(os.Stderr, "Usage: %s config.json\n", os.Args[0])
+		os.Exit(1)
+	}
+
+	if os.Args[1] == "version" {
+		fmt.Print(version.VersionString)
+		os.Exit(0)
+	}
+
+	configFile, err := os.Open(os.Args[1])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "config file: %s\n", err)
+		os.Exit(2)
+	}
+
+	var config Config
+	if err := json.NewDecoder(configFile).Decode(&config); err != nil {
+		fmt.Fprintf(os.Stderr, "config file: %s\n", err)
+		os.Exit(3)
+	}
+	configFile.Close()
+
+	logConfig := zap.NewDevelopmentConfig()
+	logConfig.Development = false
+	logConfig.DisableStacktrace = true
+	logConfig.Level.SetLevel(zap.DebugLevel)
+	log, err := logConfig.Build()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "create logger: %v\n", err)
+		os.Exit(4)
+	}
+
+	log.Info("starting mailbox-shuffler")
+
 	rawMsg, err := os.ReadFile("dev/test.msg")
 	if err != nil {
-		log.Fatalf("Failed to read test mesage: %v", err)
+		log.Fatal("Failed to read test mesage", zap.Error(err))
 	}
 
-	clientSecret, err := os.ReadFile("dev/client_secret.json")
+	clientSecret, err := os.ReadFile(config.OAuthServer.CredentialsPath)
 	if err != nil {
-		log.Fatalf("Failed to read client secret: %v", err)
+		log.Fatal("Failed to read client secret", zap.Error(err))
 	}
-	config, err := google.ConfigFromJSON(clientSecret, gmail.GmailInsertScope)
+	oauthConfig, err := google.ConfigFromJSON(clientSecret, gmail.GmailInsertScope)
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		log.Fatal("Failed to load API config", zap.Error(err))
 	}
 	ctx := context.Background()
 
-	token, err := getToken(ctx, config)
+	token, err := getToken(ctx, log, &config, oauthConfig)
 	if err != nil {
-		log.Fatalf("Failed to get OAuth token: %v", err)
+		log.Fatal("Failed to get OAuth token", zap.Error(err))
 	}
 
-	auth := option.WithHTTPClient(config.Client(ctx, token))
+	auth := option.WithHTTPClient(oauthConfig.Client(ctx, token))
 	client, err := gmail.NewService(ctx, auth, option.WithUserAgent("mailbox-shuffler"))
 	if err != nil {
-		log.Fatalf("Failed to create client: %v", err)
+		log.Fatal("Failed to create GMail client", zap.Error(err))
 	}
 
 	rawEnc := base64.RawURLEncoding.EncodeToString(rawMsg)
@@ -60,13 +92,12 @@ func main() {
 		Raw:      rawEnc,
 	})
 	result, err := call.Do()
-	log.Printf("Result: %#v", result)
-	log.Printf("Err: %#v", err)
+	log.Info("Result", zap.Any("result", result), zap.Error(err))
 }
 
-func getToken(ctx context.Context, config *oauth2.Config) (*oauth2.Token, error) {
+func getToken(ctx context.Context, log *zap.Logger, config *Config, oauthConfig *oauth2.Config) (*oauth2.Token, error) {
 	var token *oauth2.Token
-	f, err := os.Open(tokenFile)
+	f, err := os.Open(config.OAuthServer.TokenStore)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	} else if f != nil {
@@ -79,25 +110,25 @@ func getToken(ctx context.Context, config *oauth2.Config) (*oauth2.Token, error)
 	}
 
 	srv := &http.Server{Addr: "localhost:8025"}
-	config.RedirectURL = fmt.Sprintf("http://%s", srv.Addr)
+	oauthConfig.RedirectURL = fmt.Sprintf("http://%s", srv.Addr)
 
 	srvCtx, cancel := context.WithCancel(ctx)
-	s := RunOAuthServer(srvCtx, srv, config, zap.L())
+	s := RunOAuthServer(srvCtx, srv, oauthConfig, zap.L())
 
 	authURL, ch := s.AuthorizeToken()
-	log.Printf("Authorize the application at this URL:\n\t%s", authURL)
+	fmt.Printf("Authorize the application at this URL:\n\t%s\n", authURL)
 
 	code := <-ch
 	cancel()
 
-	log.Printf("Got code: %q", code)
+	log.Info("Got code", zap.String("code", code))
 
-	token, err = config.Exchange(ctx, code)
+	token, err = oauthConfig.Exchange(ctx, code)
 	if err != nil {
 		return nil, err
 	}
 
-	f, err = os.Create(tokenFile)
+	f, err = os.Create(config.OAuthServer.TokenStore)
 	if err != nil {
 		return token, err
 	}
