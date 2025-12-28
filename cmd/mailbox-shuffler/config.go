@@ -18,6 +18,8 @@ const (
 	ServerTypeGmail ServerType = "gmail"
 )
 
+// ServerConfig stores the connection information for an email
+// server.
 type ServerConfig struct {
 	Type       ServerType
 	ServerAddr string
@@ -28,22 +30,28 @@ type ServerConfig struct {
 	Password string
 }
 
+// MonitorConfig controls how to move messages between a source and
+// destination email server.
 type MonitorConfig struct {
 	Source       ServerConfig
 	Destination  ServerConfig
 	PollInterval time.Duration
 }
 
-type Config struct {
-	Monitor []MonitorConfig
+// OAuthServerConfig stores the configuration for an OAuth 2.0
+// application for authenticating to GMail.
+type OAuthServerConfig struct {
+	RedirectURL             string
+	ListenAddr              string
+	CredentialsPath         string
+	TokenStore              string
+	TLSCertPath, TLSKeyPath string
+}
 
-	OAuthServer struct {
-		RedirectURL             string
-		ListenAddr              string
-		CredentialsPath         string
-		TokenStore              string
-		TLSCertPath, TLSKeyPath string
-	}
+// Config is the top-level config of mailbox-shuffler.
+type Config struct {
+	Monitor     []MonitorConfig
+	OAuthServer OAuthServerConfig
 }
 
 func (c *Config) Validate() error {

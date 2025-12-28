@@ -11,13 +11,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 
 	"src.bluestatic.org/mailpopbox/pkg/version"
 
 	"go.uber.org/zap"
-	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/gmail/v1"
 	"google.golang.org/api/option"
@@ -74,12 +72,14 @@ func main() {
 	}
 	ctx := context.Background()
 
-	token, err := getToken(ctx, log, &config, oauthConfig)
-	if err != nil {
-		log.Fatal("Failed to get OAuth token", zap.Error(err))
+	oauthServer := RunOAuthServer(ctx, config.OAuthServer, oauthConfig, log)
+
+	resp := <-oauthServer.GetTokenForUser(ctx, config.Monitor[0].Destination.Email)
+	if resp.Error != nil {
+		log.Fatal("Failed to get OAuth token", zap.Error(resp.Error))
 	}
 
-	auth := option.WithHTTPClient(oauthConfig.Client(ctx, token))
+	auth := option.WithHTTPClient(oauthConfig.Client(ctx, resp.Token))
 	client, err := gmail.NewService(ctx, auth, option.WithUserAgent("mailbox-shuffler"))
 	if err != nil {
 		log.Fatal("Failed to create GMail client", zap.Error(err))
@@ -93,49 +93,4 @@ func main() {
 	})
 	result, err := call.Do()
 	log.Info("Result", zap.Any("result", result), zap.Error(err))
-}
-
-func getToken(ctx context.Context, log *zap.Logger, config *Config, oauthConfig *oauth2.Config) (*oauth2.Token, error) {
-	var token *oauth2.Token
-	f, err := os.Open(config.OAuthServer.TokenStore)
-	if err != nil && !os.IsNotExist(err) {
-		return nil, err
-	} else if f != nil {
-		defer f.Close()
-		if err = json.NewDecoder(f).Decode(&token); err != nil {
-			return nil, err
-		} else {
-			return token, nil
-		}
-	}
-
-	srv := &http.Server{Addr: "localhost:8025"}
-	oauthConfig.RedirectURL = fmt.Sprintf("http://%s", srv.Addr)
-
-	srvCtx, cancel := context.WithCancel(ctx)
-	s := RunOAuthServer(srvCtx, srv, oauthConfig, zap.L())
-
-	authURL, ch := s.AuthorizeToken()
-	fmt.Printf("Authorize the application at this URL:\n\t%s\n", authURL)
-
-	code := <-ch
-	cancel()
-
-	log.Info("Got code", zap.String("code", code))
-
-	token, err = oauthConfig.Exchange(ctx, code)
-	if err != nil {
-		return nil, err
-	}
-
-	f, err = os.Create(config.OAuthServer.TokenStore)
-	if err != nil {
-		return token, err
-	}
-	defer f.Close()
-	if err := json.NewEncoder(f).Encode(token); err != nil {
-		return token, err
-	}
-
-	return token, nil
 }
