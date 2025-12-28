@@ -26,6 +26,7 @@ type GetTokenForUserResult struct {
 
 type OAuthServer interface {
 	GetTokenForUser(ctx context.Context, id string) <-chan GetTokenForUserResult
+	MakeClient(context.Context, *oauth2.Token) *http.Client
 }
 
 type oauthServer struct {
@@ -185,4 +186,8 @@ func (s *oauthServer) handleRequest(rw http.ResponseWriter, req *http.Request) {
 	}
 	log.Error("Invalid request - missing code", zap.String("id", id))
 	http.Error(rw, "Invalid Code", http.StatusBadRequest)
+}
+
+func (s *oauthServer) MakeClient(ctx context.Context, token *oauth2.Token) *http.Client {
+	return s.o2c.Client(ctx, token)
 }

@@ -8,7 +8,6 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -18,7 +17,6 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/gmail/v1"
-	"google.golang.org/api/option"
 )
 
 func main() {
@@ -74,23 +72,14 @@ func main() {
 
 	oauthServer := RunOAuthServer(ctx, config.OAuthServer, oauthConfig, log)
 
-	resp := <-oauthServer.GetTokenForUser(ctx, config.Monitor[0].Destination.Email)
-	if resp.Error != nil {
-		log.Fatal("Failed to get OAuth token", zap.Error(resp.Error))
-	}
-
-	auth := option.WithHTTPClient(oauthConfig.Client(ctx, resp.Token))
-	client, err := gmail.NewService(ctx, auth, option.WithUserAgent("mailbox-shuffler"))
+	dest := NewDestination(config.Monitor[0].Destination, oauthServer, log)
+	destConn, err := dest.Connect(ctx)
 	if err != nil {
-		log.Fatal("Failed to create GMail client", zap.Error(err))
+		log.Fatal("Failed to connect to destination", zap.Error(err))
 	}
 
-	rawEnc := base64.RawURLEncoding.EncodeToString(rawMsg)
-
-	call := client.Users.Messages.Insert("me", &gmail.Message{
-		LabelIds: []string{"INBOX", "UNREAD"},
-		Raw:      rawEnc,
-	})
-	result, err := call.Do()
-	log.Info("Result", zap.Any("result", result), zap.Error(err))
+	err = destConn.AddMessage(rawMsg)
+	if err != nil {
+		log.Fatal("Failed to insert message", zap.Error(err))
+	}
 }

@@ -6,9 +6,21 @@
 
 package main
 
-import "go.uber.org/zap"
+import (
+	"context"
+	"encoding/base64"
+
+	"go.uber.org/zap"
+	"google.golang.org/api/gmail/v1"
+	"google.golang.org/api/option"
+)
 
 type Destination interface {
+	// Connect attempts to dial the Destination and return a stateful connection.
+	Connect(context.Context) (DestinationConnection, error)
+}
+
+type DestinationConnection interface {
 	// AddMessage stores the raw RFC 2822 message body in the destination mail
 	// server.
 	AddMessage([]byte) error
@@ -16,7 +28,7 @@ type Destination interface {
 	Close() error
 }
 
-func NewDestination(config ServerConfig, auth *OAuthServer, log *zap.Logger) Destination {
+func NewDestination(config ServerConfig, auth OAuthServer, log *zap.Logger) Destination {
 	switch config.Type {
 	case ServerTypeGmail:
 		return &gmailDestination{
@@ -31,12 +43,39 @@ func NewDestination(config ServerConfig, auth *OAuthServer, log *zap.Logger) Des
 
 type gmailDestination struct {
 	c    ServerConfig
-	auth *OAuthServer
+	auth OAuthServer
 	log  *zap.Logger
+
+	ctx context.Context
+	svc *gmail.Service
+}
+
+func (d *gmailDestination) Connect(ctx context.Context) (DestinationConnection, error) {
+	tokenQ := <-d.auth.GetTokenForUser(ctx, d.c.Email)
+	if tokenQ.Error != nil {
+		return nil, tokenQ.Error
+	}
+
+	auth := option.WithHTTPClient(d.auth.MakeClient(ctx, tokenQ.Token))
+	svc, err := gmail.NewService(ctx, auth, option.WithUserAgent("mailbox-shuffler"))
+	if err != nil {
+		return nil, err
+	}
+	d2 := *d
+	d2.ctx = ctx
+	d2.svc = svc
+	return &d2, nil
 }
 
 func (d *gmailDestination) AddMessage(msg []byte) error {
-	return nil
+	enc := base64.RawURLEncoding.EncodeToString(msg)
+	call := d.svc.Users.Messages.Insert("me", &gmail.Message{
+		LabelIds: []string{"INBOX", "UNREAD"},
+		Raw:      enc,
+	})
+	result, err := call.Do()
+	d.log.Info("Result", zap.Any("result", result), zap.Error(err))
+	return err
 }
 
 func (d *gmailDestination) Close() error {
