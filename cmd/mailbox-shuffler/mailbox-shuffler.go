@@ -55,9 +55,8 @@ func main() {
 
 	log.Info("starting mailbox-shuffler")
 
-	rawMsg, err := os.ReadFile("dev/test.msg")
-	if err != nil {
-		log.Fatal("Failed to read test mesage", zap.Error(err))
+	if err := config.Validate(); err != nil {
+		log.Fatal("Invalid config", zap.Error(err))
 	}
 
 	clientSecret, err := os.ReadFile(config.OAuthServer.CredentialsPath)
@@ -72,14 +71,14 @@ func main() {
 
 	oauthServer := RunOAuthServer(ctx, config.OAuthServer, oauthConfig, log)
 
-	dest := NewDestination(config.Monitor[0].Destination, oauthServer, log)
-	destConn, err := dest.Connect(ctx)
-	if err != nil {
-		log.Fatal("Failed to connect to destination", zap.Error(err))
+	for i, mc := range config.Monitor {
+		m := NewMontior(mc, oauthServer, log)
+		if err := m.Start(ctx); err != nil {
+			log.Fatal("Failed to start montior", zap.Int("index", i), zap.Error(err))
+		}
 	}
 
-	err = destConn.AddMessage(rawMsg)
-	if err != nil {
-		log.Fatal("Failed to insert message", zap.Error(err))
-	}
+	log.Info("Succesfully started all monitors")
+
+	<-ctx.Done()
 }

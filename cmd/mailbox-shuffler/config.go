@@ -30,12 +30,16 @@ type ServerConfig struct {
 	Password string
 }
 
+func (c *ServerConfig) LogDescription() string {
+	return fmt.Sprintf("%s/%s", c.Type, c.Email)
+}
+
 // MonitorConfig controls how to move messages between a source and
 // destination email server.
 type MonitorConfig struct {
-	Source       ServerConfig
-	Destination  ServerConfig
-	PollInterval time.Duration
+	Source              ServerConfig
+	Destination         ServerConfig
+	PollIntervalSeconds time.Duration
 }
 
 // OAuthServerConfig stores the configuration for an OAuth 2.0
@@ -58,6 +62,9 @@ func (c *Config) Validate() error {
 	for _, mon := range c.Monitor {
 		if mon.Source.Email == "" || mon.Destination.Email == "" {
 			return fmt.Errorf("Monitor source/destination email missing")
+		}
+		if mon.PollIntervalSeconds == 0 {
+			return fmt.Errorf("Unset poll interval")
 		}
 		if err := validateSource(mon.Source); err != nil {
 			return fmt.Errorf("Invalid Source: %w", err)

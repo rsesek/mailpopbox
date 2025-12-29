@@ -18,8 +18,11 @@ import (
 )
 
 type Source interface {
+	// Connect establishes a connection to the Source.
+	Connect() error
 	// GetMessages returns the list of available messages on the server. The
-	// returned Message objects are only valid until `Close` is called.
+	// returned Message objects are only valid until `Close` is called. This
+	// implicitly calls `Connect`.
 	GetMessages() ([]Message, error)
 	// Reset attempts to rollback the transaction on the server.
 	Reset() error
@@ -35,7 +38,7 @@ type Message interface {
 
 // NewSource creates an interface for accessing a message source. The returned
 // object is *not* goroutine safe.
-func NewSource(config ServerConfig, auth *OAuthServer, log *zap.Logger) Source {
+func NewSource(config ServerConfig, auth OAuthServer, log *zap.Logger) Source {
 	switch config.Type {
 	case ServerTypePOP3:
 		return &pop3Source{
@@ -65,6 +68,10 @@ func (m *pop3Message) Content() (io.ReadCloser, error) { return m.s.mbox.Retriev
 func (m *pop3Message) Delete() error                   { return m.s.mbox.Delete(m.msg) }
 
 var errNotConnected = fmt.Errorf("Source is not connected")
+
+func (s *pop3Source) Connect() error {
+	return s.connect()
+}
 
 func (s *pop3Source) GetMessages() ([]Message, error) {
 	if err := s.connect(); err != nil {
