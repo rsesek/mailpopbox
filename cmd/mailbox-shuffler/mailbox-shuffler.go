@@ -46,7 +46,7 @@ func main() {
 	logConfig := zap.NewDevelopmentConfig()
 	logConfig.Development = false
 	logConfig.DisableStacktrace = true
-	logConfig.Level.SetLevel(zap.DebugLevel)
+	logConfig.Level.SetLevel(zap.InfoLevel)
 	log, err := logConfig.Build()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "create logger: %v\n", err)

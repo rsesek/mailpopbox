@@ -72,7 +72,7 @@ func (sc *serverConn) transaction(fmt string, args ...any) (string, error) {
 		log.Error("Command failed", zap.Error(err))
 		return reply, err
 	}
-	log.Info("Command succeeded", zap.String("reply", reply))
+	log.Debug("Command succeeded", zap.String("reply", reply))
 	return reply, nil
 }
 
