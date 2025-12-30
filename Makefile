@@ -10,6 +10,10 @@ PKG_BASE=mailpopbox-$(VERSION)
 
 DOCS_FILES=README.md docs/install.md
 
+.PHONY:
+version:
+	@echo $(VERSION)
+
 clean:
 	rm -rf build || true
 	mkdir build
