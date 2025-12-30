@@ -129,7 +129,9 @@ func (s *oauthServer) GetTokenForUser(ctx context.Context, userID string) <-chan
 		codeCh := make(chan string)
 		s.tokenReqs[nonce] = codeCh
 
-		url := s.o2c.AuthCodeURL(nonce, oauth2.AccessTypeOffline)
+		// `ApprovalForce` is needed in combination with `AccessTypeOffline` in order
+		// to get a refresh token.
+		url := s.o2c.AuthCodeURL(nonce, oauth2.AccessTypeOffline, oauth2.ApprovalForce)
 		s.log.Info("Requesting authorization", zap.String("nonce", nonce), zap.String("url", url))
 
 		// Drop the lock until the code is received.
