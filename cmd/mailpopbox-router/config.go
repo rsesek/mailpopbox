@@ -21,13 +21,20 @@ const (
 // ServerConfig stores the connection information for an email
 // server.
 type ServerConfig struct {
-	Type       ServerType
-	ServerAddr string
-	UseTLS     bool
+	Type ServerType
 
+	// Email is required for all configs, however it's interpreted differently
+	// between ServerTypes:
+	// - `ServerTypePOP3` : The pop3 username for authentication.
+	// - `ServerTypeGmail` : An identifier to store the OAuth token under. This is
+	//        not used to authenticate.
 	Email string
 
-	Password string
+	// The following fields only apply to `ServerTypePOP3`.
+
+	ServerAddr string
+	UseTLS     bool
+	Password   string
 }
 
 func (c *ServerConfig) LogDescription() string {
@@ -45,11 +52,10 @@ type MonitorConfig struct {
 // OAuthServerConfig stores the configuration for an OAuth 2.0
 // application for authenticating to GMail.
 type OAuthServerConfig struct {
-	RedirectURL             string
-	ListenAddr              string
-	CredentialsPath         string
-	TokenStore              string
-	TLSCertPath, TLSKeyPath string
+	RedirectURL     string
+	ListenAddr      string
+	CredentialsPath string
+	TokenStore      string
 }
 
 // Config is the top-level config of mailbox-shuffler.
