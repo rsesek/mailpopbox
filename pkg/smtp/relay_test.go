@@ -8,6 +8,7 @@ package smtp
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"mime"
@@ -92,7 +93,7 @@ func TestDeliveryFailureMessage(t *testing.T) {
 		server: s,
 		log:    zap.NewNop(),
 	}
-	mta.deliverRelayFailure(env, zap.NewNop(), env.RcptTo[0].Address, errorStr1, fmt.Errorf(errorStr2))
+	mta.deliverRelayFailure(env, zap.NewNop(), env.RcptTo[0].Address, errorStr1, errors.New(errorStr2))
 
 	if want, got := 1, len(s.messages); want != got {
 		t.Errorf("Want %d failure notification, got %d", want, got)

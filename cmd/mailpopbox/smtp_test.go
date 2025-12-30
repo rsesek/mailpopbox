@@ -18,7 +18,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"src.bluestatic.org/mailpopbox/smtp"
+	"src.bluestatic.org/mailpopbox/pkg/smtp"
 )
 
 func TestVerifyAddress(t *testing.T) {

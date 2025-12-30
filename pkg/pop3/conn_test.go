@@ -68,7 +68,7 @@ func runServer(t *testing.T, po PostOffice) net.Listener {
 			if err != nil {
 				return
 			}
-			go AcceptConnection(conn, po, zap.NewNop())
+			go AcceptConnection(conn, po, zap.L())
 		}
 	}()
 	return l
@@ -244,7 +244,7 @@ func clientServerTest(t *testing.T, s *testServer, sequence []requestResponse) {
 	responseOK(t, conn)
 
 	for _, pair := range sequence {
-		ok(t, conn.PrintfLine(pair.command))
+		ok(t, conn.PrintfLine("%s", pair.command))
 		pair.expecter(t, conn)
 		if t.Failed() {
 			t.Logf("command %q", pair.command)
@@ -306,6 +306,56 @@ func TestCaseSensitivty(t *testing.T) {
 		{"retr 1", responseERR},
 		{"dele 999", responseOK},
 		{"QUIT", responseOK},
+	})
+}
+
+func TestList(t *testing.T) {
+	s := newTestServer()
+	s.mb.msgs[1] = &testMessage{1, 5, false, "hello"}
+	s.mb.msgs[2] = &testMessage{2, 5, false, "world"}
+
+	clientServerTest(t, s, []requestResponse{
+		{"USER u", responseOK},
+		{"PASS p", responseOK},
+		{"LIST", func(t testing.TB, tp *textproto.Conn) string {
+			responseOK(t, tp)
+			lines, err := tp.ReadDotLines()
+			if err != nil {
+				t.Error(err)
+				return ""
+			}
+			if want, got := 2, len(lines); want != got {
+				t.Errorf("Expected %d lines, got %d", want, got)
+				return ""
+			}
+			if want, got := "1 5", lines[0]; want != got {
+				t.Errorf("Expected first line to be %q, got %q", want, got)
+				return ""
+			}
+			if want, got := "2 5", lines[1]; want != got {
+				t.Errorf("Expected second line to be %q, got %q", want, got)
+				return ""
+			}
+			return ""
+		}},
+		{"LIST 2", func(t testing.TB, tp *textproto.Conn) string {
+			responseOK(t, tp)
+			lines, err := tp.ReadDotLines()
+			if err != nil {
+				t.Error(err)
+				return ""
+			}
+			if want, got := 1, len(lines); want != got {
+				t.Errorf("Expected %d lines, got %d", want, got)
+				return ""
+			}
+			if want, got := "2 5", lines[0]; want != got {
+				t.Errorf("Expected line to be %q, got %q", want, got)
+				return ""
+			}
+			return ""
+		}},
+		{"LIST 5", responseERR},
 	})
 }
 
