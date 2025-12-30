@@ -16,59 +16,59 @@ import (
 )
 
 type Monitor struct {
-	c    MonitorConfig
-	auth OAuthServer
-	log  *zap.Logger
+	c   MonitorConfig
+	log *zap.Logger
+
+	src Source
+	dst Destination
 }
 
 func NewMontior(config MonitorConfig, auth OAuthServer, log *zap.Logger) *Monitor {
 	log = log.With(zap.String("source", config.Source.LogDescription()),
 		zap.String("dest", config.Destination.LogDescription()))
 	return &Monitor{
-		c:    config,
-		auth: auth,
-		log:  log,
+		c:   config,
+		log: log,
+		src: NewSource(config.Source, auth, log),
+		dst: NewDestination(config.Destination, auth, log),
 	}
 }
 
 func (m *Monitor) Start(ctx context.Context) error {
-	src := NewSource(m.c.Source, m.auth, m.log)
-	dst := NewDestination(m.c.Destination, m.auth, m.log)
-
-	if err := m.runOnce(ctx, src, dst); err != nil {
+	if err := m.runOnce(ctx); err != nil {
 		m.log.Error("Failed to start monitor", zap.Error(err))
 		return err
 	}
 
-	go m.run(ctx, src, dst)
+	go m.run(ctx)
 
 	return nil
 }
 
-func (m *Monitor) run(ctx context.Context, src Source, dst Destination) {
+func (m *Monitor) run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
 			m.log.Info("Monitor stopping")
 			return
 		case <-time.After(m.c.PollIntervalSeconds * time.Second):
-			m.runOnce(ctx, src, dst)
+			m.runOnce(ctx)
 		}
 	}
 }
 
-func (m *Monitor) runOnce(ctx context.Context, src Source, dst Destination) error {
+func (m *Monitor) runOnce(ctx context.Context) error {
 	m.log.Info("Polling for messages")
 
-	if err := src.Connect(); err != nil {
+	if err := m.src.Connect(); err != nil {
 		return fmt.Errorf("Failed to connect to source: %w", err)
 	}
-	dstConn, err := dst.Connect(ctx)
+	dstConn, err := m.dst.Connect(ctx)
 	if err != nil {
 		return fmt.Errorf("Failed to connect to dest: %w", err)
 	}
 
-	msgs, err := src.GetMessages()
+	msgs, err := m.src.GetMessages()
 	if err != nil {
 		return fmt.Errorf("Failed to list messages: %w", err)
 	}
@@ -83,7 +83,7 @@ func (m *Monitor) runOnce(ctx context.Context, src Source, dst Destination) erro
 		}
 	}
 
-	if err := src.Close(); err != nil {
+	if err := m.src.Close(); err != nil {
 		return fmt.Errorf("Failed to close source: %w", err)
 	}
 	if err := dstConn.Close(); err != nil {
