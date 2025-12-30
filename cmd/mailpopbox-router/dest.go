@@ -57,7 +57,7 @@ func (d *gmailDestination) Connect(ctx context.Context) (DestinationConnection, 
 	}
 
 	auth := option.WithHTTPClient(d.auth.MakeClient(ctx, tokenQ.Token))
-	svc, err := gmail.NewService(ctx, auth, option.WithUserAgent("mailbox-shuffler"))
+	svc, err := gmail.NewService(ctx, auth, option.WithUserAgent("mailpopbox-router"))
 	if err != nil {
 		return nil, err
 	}

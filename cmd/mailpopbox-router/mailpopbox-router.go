@@ -53,7 +53,7 @@ func main() {
 		os.Exit(4)
 	}
 
-	log.Info("starting mailbox-shuffler")
+	log.Info("Starting mailpopbox-router")
 
 	if err := config.Validate(); err != nil {
 		log.Fatal("Invalid config", zap.Error(err))

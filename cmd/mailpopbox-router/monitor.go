@@ -120,7 +120,7 @@ func (m *Monitor) transferMessageTo(msg Message, dst DestinationConnection) erro
 
 func getReceivedInfo(cfg MonitorConfig, t time.Time) []byte {
 	line := fmt.Sprintf(
-		"Received: from <%s> (via %s)\r\n        by mailpopbox-shuffler at %s\r\n        for <%s> (via %s)\r\n",
+		"Received: from <%s> (via %s)\r\n        by mailpopbox-router at %s\r\n        for <%s> (via %s)\r\n",
 		cfg.Source.Email, cfg.Source.Type,
 		t.Format(time.RFC1123Z),
 		cfg.Destination.Email, cfg.Destination.Type)
