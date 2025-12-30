@@ -22,6 +22,7 @@ mac: clean
 	GOOS=darwin GOARCH=amd64 go build $(LDFLAG) ./cmd/...
 	mkdir $(PKG_BASE)
 	cp build/mailpopbox $(PKG_BASE)
+	cp build/mailpopbox-router $(PKG_BASE)
 	cp $(DOCS_FILES) $(PKG_BASE)
 	zip -r $(PKG_BASE)-mac-amd64.zip $(PKG_BASE)
 	rm -rf $(PKG_BASE)
@@ -30,6 +31,7 @@ linux: clean
 	GOOS=linux GOARCH=amd64 go build $(LDFLAG) ./cmd/...
 	mkdir $(PKG_BASE)
 	cp build/mailpopbox $(PKG_BASE)
+	cp build/mailpopbox-router $(PKG_BASE)
 	cp deployment/mailpopbox.service $(PKG_BASE)
 	cp $(DOCS_FILES) $(PKG_BASE)
 	zip -r $(PKG_BASE)-linux-amd64.zip $(PKG_BASE)
