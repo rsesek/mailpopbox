@@ -19,6 +19,13 @@ accounts to enable replying from any address handled by the server. Instead, the
 a single *mailbox* user, and if the message's Subject header has a special `[sendas:ADDRESS]`
 string, the server will alter the From message header to be from ADDRESS@DOMAIN.
 
+## Message Router
+
+Starting in January 2026, Gmail is [deprecating POP3
+support](https://support.google.com/mail/answer/16604719). In order to move messages from the POP3
+server to Gmail, mailpopbox v3 includes a new program, mailpopbox-router. See its [installation
+guide](docs/install_router.md) for more details.
+
 ## Installation
 
 Installation requires a server capable of binding on port 25 for SMTP and 995 for POP3. A TLS

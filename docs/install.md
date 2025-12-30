@@ -155,6 +155,12 @@ says `+OK POP3 (mailpopbox) server mx.yourdomain.com`.
 
 ## Configuring Your Email Client
 
+> [!warning]
+>
+> As of January 2026, Gmail has [deprecated](https://support.google.com/mail/answer/16604719) this
+> feature. In order to maintain this functionality, you should run
+> [mailpopbox-router](install_router.md) in addition to the mailpobpox server.
+
 Now that mailpopbox is running and DNS is configured, it is time to set your mail client up to
 connect to it. We will set up both a POP3 account to download delivered mail, and a SMTP account to
 enable replying. This guide is for Gmail, but the configuration parameters are the same regardless
