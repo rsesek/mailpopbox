@@ -78,6 +78,17 @@ account. The POP3 server will be polled every 90 seconds, and it listens on cont
 }
 ```
 
+A few notes on the container approach:
+
+- The container for mailpopbox-router expects the configuration file at
+  `/var/mailpopbox/router.json`
+- The `OAuthServer.ListenAddr` should listen on all interfaces in the container
+- To serve the OAuth server with HTTPS, use a reverse proxy that performs TLS termination and
+  forwards to the container port
+- It's highly recommended to setup monitoring and alerting for error-level log messages
+
+## Running
+
 Quick start:
 
 ```shell
@@ -88,10 +99,9 @@ $ cp ~/Downloads/google_oauth_secrets.json mailpopbox_router_data/google_creds.j
 $ docker run -v ./mailpopbox_router_data:/var/mailpopbox -p 8080:80 ghcr.io/rsesek/mailpopbox/mailpopbox-router:latest
 ```
 
-A few notes on the container approach:
-
-- The container for mailpopbox-router expects the configuration file at
-  `/var/mailpopbox/router.json`
-- The `OAuthServer.ListenAddr` should listen on all interfaces in the container
-- To serve the OAuth server with HTTPS, use a reverse proxy that performs TLS termination and
-  forwards to the container port.
+When mailpopbox-router first starts, it will attempt to connect to all the configured source and
+destinations. The first time a new Gmail account is detected, the OAuth authentication URL will be
+emitted to the log. You must follow this URL and approve access to the application. Remember that
+the `Email` specified in the config file is unused for authentication purposes -- it is only used to
+disambiguate different accounts. The Google account that approves the OAuth application in the
+browser will be the one that mailpopbox-router connects to.
