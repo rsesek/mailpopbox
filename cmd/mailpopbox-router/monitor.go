@@ -122,7 +122,7 @@ func getReceivedInfo(cfg MonitorConfig, t time.Time) []byte {
 	line := fmt.Sprintf(
 		"Received: from <%s> (via %s) by mailpopbox-router\r\n        for <%s> (via %s); %s\r\n",
 		cfg.Source.Email, cfg.Source.Type,
-		t.Format(time.RFC1123Z),
-		cfg.Destination.Email, cfg.Destination.Type)
+		cfg.Destination.Email, cfg.Destination.Type,
+		t.Format(time.RFC1123Z))
 	return []byte(line)
 }
