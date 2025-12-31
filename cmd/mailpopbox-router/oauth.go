@@ -106,10 +106,12 @@ func RunOAuthServer(ctx context.Context, sc OAuthServerConfig, o2c *oauth2.Confi
 	return s
 }
 
-func (s *oauthServer) GetTokenForUser(ctx context.Context, userID string) <-chan GetTokenForUserResult {
+func (s *oauthServer) GetTokenForUser(ctx context.Context, userid string) <-chan GetTokenForUserResult {
 	ch := make(chan GetTokenForUserResult)
 
 	go func() {
+		log := s.log.With(zap.String("userid", userid))
+
 		s.mu.Lock()
 		defer s.mu.Unlock()
 
@@ -118,7 +120,7 @@ func (s *oauthServer) GetTokenForUser(ctx context.Context, userID string) <-chan
 			ch <- GetTokenForUserResult{Error: err}
 			return
 		}
-		token, ok := ts.Tokens[userID]
+		token, ok := ts.Tokens[userid]
 		if ok {
 			ch <- GetTokenForUserResult{Token: token}
 			return
@@ -132,12 +134,12 @@ func (s *oauthServer) GetTokenForUser(ctx context.Context, userID string) <-chan
 		// `ApprovalForce` is needed in combination with `AccessTypeOffline` in order
 		// to get a refresh token.
 		url := s.o2c.AuthCodeURL(nonce, oauth2.AccessTypeOffline, oauth2.ApprovalForce)
-		s.log.Info("Requesting authorization", zap.String("nonce", nonce), zap.String("url", url))
+		log.Info("Requesting authorization", zap.String("nonce", nonce), zap.String("url", url))
 
 		// Drop the lock until the code is received.
 		s.mu.Unlock()
 		code := <-codeCh
-		s.log.Info("Got code", zap.String("code", code))
+		log.Info("Received code, exchanging for token")
 		token, err = s.o2c.Exchange(ctx, code)
 		s.mu.Lock()
 
@@ -151,7 +153,7 @@ func (s *oauthServer) GetTokenForUser(ctx context.Context, userID string) <-chan
 			ch <- GetTokenForUserResult{Error: err}
 			return
 		}
-		ts.Tokens[userID] = token
+		ts.Tokens[userid] = token
 		if err := ts.Save(s.sc.TokenStore); err != nil {
 			ch <- GetTokenForUserResult{Error: err}
 			return
