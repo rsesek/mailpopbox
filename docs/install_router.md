@@ -13,27 +13,43 @@ of this guide.
 In order to deliver messages to Gmail, you need to configure a Google Cloud project and OAuth
 client.
 
+The required OAuth scope is considered sensitive, and Google marks it as
+[restricted](https://developers.google.com/identity/protocols/oauth2/production-readiness/policy-compliance#sensitive-restricted-scope-verification).
+There are two ways to handle this for personal projects, such as this self-hosted instance of
+mailpopbox-router:
+
+The first is to keep the application in the "Testing" phase and specify "Test users" under **Google
+Auth Platform** > **Audience**. Add all the Google account addresses (emails) that you will be using
+mailpopbox-router with to the **Test users** section. However, testing-phase applications [receive
+refresh tokens that expire in 7 days](https://developers.google.com/identity/protocols/oauth2). This
+proves to be an annoying UX for mailpopbox-router because re-authentication is required weekly.
+
+The second approach is to publish the application (done under **Audience**, per above) but to skip
+the required Google security verification steps. When authenticating, users will be required to
+click through several scary-looking warnings due to the unverified state of the application. But
+once authenticated, the OAuth refresh tokens remain valid indefinitely.
+
+With that in mind, configure the GCP project like so:
+
 1. Create a new GCP project on [](https://console.cloud.google.com).
 
 2. Under **APIs & Services**, enable the **Gmail API**.
 
 3. Under **APIs & Services**, go to the **OAuth Consent Screen** and fill in the required details.
 
-4. You can use the Gmail API without getting Google security approval by keeping it in the "Testing"
-   phase and using "Test users" under **Google Auth Platform** > **Audience**. Add all the Google
-   account addresses (emails) that you will be using mailpopbox-router with to the **Test users**
-   section. Note you are limited to 100 users for the lifetime of the project.
-
-5. Go to **Google Auth Platform** > **Data Access**. Click **Add or remove scopes** and add the
+4. Go to **Google Auth Platform** > **Data Access**. Click **Add or remove scopes** and add the
    scope `https://www.googleapis.com/auth/gmail.insert`, which may be abbreviated to
    `.../auth/gmail.insert`.
 
-6. Finally go to **Google Auth Platform** > **Clients**. Create a new client of type **Web
+5. Go to **Google Auth Platform** > **Clients**. Create a new client of type **Web
    application**. For the **Authorized redirect URLs** you will need to specify the full URL
    (including scheme and any nonstandard port) that the OAuth server will redirect the client to.
    This should point to the host that runs mailpopbox-router.
 
-7. Download the client credentials JSON file and store it in a secure location.
+6. Download the client credentials JSON file and store it in a secure location.
+
+7. Choose which publishing status approach you will use. Note that either approach (testing or
+   published but unverified) will limit you to 100 users.
 
 > [!note]
 >
